@@ -391,6 +391,8 @@ const TABS = [
   ['players',  'Spieler-Analyse'],
   ['buli',     'Bundesliga'],
   ['feed',     'Aktivitäten'],
+  ['coppa',    'Coppa Corona'],
+  ['liga',     'Regeln & Battles'],
   ['archive',  'Archiv']
 ];
 let curTab = 'home';
@@ -408,7 +410,7 @@ function renderAll() {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + curTab));
   const fn = { home: vHome, table: vTable, squad: vSquad, market: vMarket,
                managers: vManagers, players: vPlayers, buli: vBuli, feed: vFeed,
-               archive: vArchive }[curTab];
+               coppa: vCoppa, liga: vLiga, archive: vArchive }[curTab];
   if (fn) { try { fn($('#v-' + curTab)); } catch (e) { console.error(e); $('#v-' + curTab).innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
 }
 
@@ -468,6 +470,17 @@ function vHome(v) {
     statCard('Budget', eur(b), b != null && teamVal ? 'Gesamt ' + eurShort(b + teamVal) : '') +
     statCard('Rückstand Platz 1', gap > 0 ? num(gap) : '—', gap > 0 ? 'Punkte' : (myPts > 0 ? 'Du führst 🏆' : 'noch keine Punkte')) +
     '</div>';
+
+  // Regelverstöße gehören ganz nach oben - eine Sanktion kostet einen
+  // Aufstellungsplatz und ist teurer als jede verpasste Auswertung.
+  if (window.ligaCheck) {
+    const ti = teamInfo();
+    const krit = window.ligaCheck(squad, ti.names, ti.ids).filter(b => b.art === 'kritisch');
+    if (krit.length) {
+      h += '<div class="card-head"><h2 style="color:var(--crit)">⚠ Regelverstoß im Kader</h2>' +
+           '<span class="hint">Sanktion droht – Details im Reiter „Regeln & Battles“</span></div>' + ruleCards(krit);
+    }
+  }
 
   // Eigene Leistung gegen die Liga - drei klar unterscheidbare Linien
   // statt aller Manager übereinander (das wäre unlesbar).
@@ -829,6 +842,198 @@ function vFeed(v) {
   v.querySelectorAll('[data-p]').forEach(tr => tr.onclick = () => openPlayer(tr.dataset.p));
 }
 
+/* ============================================================
+   Ligaspezifisch: Regelprüfung, Termine, Battles, Coppa
+   (Regelwerk steht in liga.js)
+   ============================================================ */
+
+/** Vereinsnamen und Bundesliga-Zugehörigkeit aus der Wettbewerbstabelle */
+function teamInfo() {
+  const t = (S.compTable && S.compTable.it) || [];
+  const names = {}, ids = [];
+  t.forEach(r => { names[String(r.tid)] = r.tn; ids.push(String(r.tid)); });
+  return { names, ids };
+}
+
+/** Befunde des Regelwächters als Kartenliste */
+function ruleCards(befunde) {
+  if (!befunde.length) {
+    return '<div class="card" style="border-color:color-mix(in srgb, var(--good) 45%, transparent)">' +
+      '<div style="display:flex;gap:11px;align-items:center">' +
+      '<span style="font-size:20px">✓</span><div><b>Kader ist regelkonform</b>' +
+      '<div class="psub">Kadergröße, Vereinsgrenze und Bundesliga-Zugehörigkeit geprüft.</div></div></div></div>';
+  }
+  const farbe = a => a === 'kritisch' ? 'var(--crit)' : a === 'warnung' ? 'var(--warn)' : 'var(--muted)';
+  const icon  = a => a === 'kritisch' ? '⚠' : a === 'warnung' ? '!' : 'i';
+  return befunde.map(b =>
+    '<div class="card" style="border-color:color-mix(in srgb, ' + farbe(b.art) + ' 45%, transparent);margin-bottom:12px">' +
+      '<div style="display:flex;gap:11px">' +
+        '<span style="font-size:17px;color:' + farbe(b.art) + ';flex:none">' + icon(b.art) + '</span>' +
+        '<div><b>' + esc(b.titel) + '</b>' + (b.regel ? ' <span class="pill">Regel ' + esc(b.regel) + '</span>' : '') +
+        '<div class="psub" style="margin-top:3px;line-height:1.5">' + esc(b.text) + '</div></div>' +
+      '</div></div>').join('');
+}
+
+/* ---------- Reiter: Regeln & Battles ---------- */
+function vLiga(v) {
+  const L = window.LIGA;
+  if (!L) { v.innerHTML = card('Regelwerk', '', '<div class="empty">Regeldatei nicht geladen.</div>'); return; }
+  const sq = (S.squad && S.squad.it) || [];
+  const ti = teamInfo();
+  const befunde = window.ligaCheck(sq, ti.names, ti.ids);
+  const krit = befunde.filter(b => b.art === 'kritisch').length;
+
+  // Nächster Termin
+  const jetzt = Date.now();
+  const naechster = L.termine.map(t => ({ ...t, ms: new Date(t.d).getTime() }))
+                             .filter(t => t.ms > jetzt).sort((a, b) => a.ms - b.ms)[0];
+  const tage = naechster ? Math.ceil((naechster.ms - jetzt) / 86400000) : null;
+
+  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
+    statCard('Regelverstöße', krit ? String(krit) : '0',
+             krit ? 'Sanktion droht' : 'alles sauber') +
+    statCard('Kadergröße', sq.length + ' / ' + L.maxKader,
+             sq.filter(p => p.pos === 1).length + ' TW · ' + sq.filter(p => p.pos !== 1).length + ' Feld') +
+    statCard('Nächster Termin', naechster ? (tage <= 0 ? 'heute' : tage + ' Tg') : '–',
+             naechster ? esc(naechster.t) : '') +
+    statCard('Marktwert-Update', L.marktwertUpdate, 'täglich') +
+    '</div>';
+
+  h += '<div class="card-head"><h2>Regelwächter</h2><span class="hint">geprüft nach ' + esc(L.name) + '-Statut</span></div>' + ruleCards(befunde);
+
+  // Battles
+  h += card('Battle-Wertungen', L.battlePreis + ' € je Kategorie', '<div id="t-battle"></div>');
+
+  // Termine
+  h += card('Termine der Saison ' + L.saison, '', '<div class="tbl-wrap"><table><tbody>' +
+    L.termine.map(t => {
+      const ms = new Date(t.d).getTime(), vorbei = ms < jetzt;
+      const d = Math.abs(Math.ceil((ms - jetzt) / 86400000));
+      return '<tr' + (vorbei ? ' style="opacity:.5"' : '') + '>' +
+        '<td style="width:1%;white-space:nowrap"><b>' + dmy(t.d) + '</b></td>' +
+        '<td>' + esc(t.t) + (t.i ? '<div class="psub">' + esc(t.i) + '</div>' : '') + '</td>' +
+        '<td class="num" style="color:var(--muted)">' + (vorbei ? 'vorbei' : 'in ' + d + ' Tagen') + '</td></tr>';
+    }).join('') + '</tbody></table></div>');
+
+  // Auktionsrechner
+  h += card('Auktionsrechner', 'Richtpreis nach Regel X', '<div class="chips" style="margin-bottom:12px">' +
+    '<input class="search" id="aukMv" placeholder="Marktwert eingeben, z. B. 1767455" inputmode="numeric"></div>' +
+    '<div id="aukOut"></div>');
+
+  // Gewinnverteilung & Kernregeln
+  h += '<div class="grid g-2">' +
+    card('Gewinnverteilung', 'Einsatz ' + L.einsatz + ' €', '<div class="tbl-wrap"><table><tbody>' +
+      L.gewinne.map(g => '<tr><td>' + esc(g[0]) + '</td><td class="num">' + esc(g[1]) + '</td></tr>').join('') +
+      '</tbody></table></div>') +
+    card('Kernregeln auf einen Blick', '', '<div class="tbl-wrap"><table><tbody>' +
+      [['Kadergröße', L.maxKader + ' Spieler (' + L.maxFeldspieler + ' Feld + ' + L.maxTorhueter + ' TW)'],
+       ['Je Verein', 'höchstens ' + L.maxProVerein + ' Spieler'],
+       ['Interner Transfer', 'Richtpreis auf ' + eurShort(L.richtpreisSchritt) + ' aufgerundet'],
+       ['Gebotsschritt', 'mindestens ' + eurShort(L.gebotSchritt)],
+       ['Externer Transfer', 'mindestens exakter Marktwert (kein Underpay)'],
+       ['Anti-Trading', 'gekaufter Spieler muss einen Spieltag im Kader stehen'],
+       ['Auktionsdauer', L.auktionMinStd + '–' + L.auktionMaxStd + ' Std., Nachtruhe ' + L.nachtruhe[0] + '–' + L.nachtruhe[1] + ' Uhr'],
+       ['Auktionsende', 'ab dem ' + (L.letzterAuktionsSpieltag + 1) + '. Spieltag keine Auktionen mehr'],
+       ['Soft-Reset', 'nach dem ' + L.softResetSpieltag + '. Spieltag']
+      ].map(r => '<tr><td>' + esc(r[0]) + '</td><td class="num">' + esc(r[1]) + '</td></tr>').join('') +
+      '</tbody></table></div>') +
+    '</div>';
+
+  v.innerHTML = h;
+
+  // Battle-Tabelle aus den Ligawertungen
+  const btls = (S.overview && S.overview.btls) || [];
+  const bt = $('#t-battle', v);
+  if (btls.length) {
+    bt.innerHTML = '<div class="tbl-wrap"><table><thead><tr><th>Kategorie</th><th>Wertung</th><th>Führend</th></tr></thead><tbody>' +
+      btls.map(b => {
+        const dn = L.battleNamen[b.t];
+        return '<tr class="' + (b.u ? 'clickable' : '') + '" data-u="' + esc((b.u && b.u.i) || '') + '">' +
+          '<td><b>' + esc(dn || b.n) + '</b>' + (dn && b.n !== dn ? '<div class="psub">' + esc(b.n) + '</div>' : '') + '</td>' +
+          '<td class="psub">' + esc(b.d || '') + '</td>' +
+          '<td>' + (b.u ? playerCell(b.u.n, b.u.uim) : '<span class="psub">noch offen</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    bt.querySelectorAll('[data-u]').forEach(tr => { if (tr.dataset.u) tr.onclick = () => openManager(tr.dataset.u); });
+  } else {
+    bt.innerHTML = '<div class="empty">Die Wertungen erscheinen, sobald die Saison läuft.</div>';
+  }
+
+  // Auktionsrechner
+  const inp = $('#aukMv', v), out = $('#aukOut', v);
+  const rechne = () => {
+    const mv = parseInt(String(inp.value).replace(/\D/g, ''), 10);
+    if (!mv) { out.innerHTML = '<div class="psub">Marktwert eingeben – der Richtpreis wird nach Regel X auf den nächsten ' + eurShort(L.richtpreisSchritt) + ' aufgerundet.</div>'; return; }
+    const rp = window.richtpreis(mv);
+    out.innerHTML =
+      '<div class="grid g-stats" style="margin-bottom:12px">' +
+        statCard('Marktwert', eur(mv), '') +
+        statCard('Richtpreis', eur(rp), rp > mv ? '+' + eurShort(rp - mv) + ' aufgerundet' : 'bereits glatt') +
+      '</div>' +
+      '<div class="psub" style="margin-bottom:6px">Zulässige Gebote:</div>' +
+      '<div class="chips">' + window.gebotsstufen(rp, 6).map(g => '<span class="chip">' + eur(g) + '</span>').join('') + '</div>' +
+      '<div class="card" style="margin-top:14px;background:var(--surface-2)"><div class="psub" style="margin-bottom:6px">Auktionstext für die Gruppe:</div>' +
+      '<code style="font-size:12.5px;line-height:1.7;display:block;white-space:pre-wrap">Name: [Spieler]\nakt. Marktwert: ' +
+      nf.format(mv) + '\nRichtpreis: ' + nf.format(rp) + '\nLaufzeit: ' + L.auktionMinStd + ' Stunden</code></div>';
+  };
+  inp.oninput = rechne;
+  rechne();
+}
+
+/* ---------- Reiter: Coppa Corona ---------- */
+function vCoppa(v) {
+  const L = window.LIGA, C = L && L.coppa;
+  if (!C) { v.innerHTML = card('Coppa Corona', '', '<div class="empty">Regeldatei nicht geladen.</div>'); return; }
+  const us = (S.ranking && S.ranking.us) || [];
+  const tabellen = window.coppaTabellen(us);
+
+  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
+    statCard('Teilnehmer', L.maxManager, '3 Gruppen à 4') +
+    statCard('Gruppenspieltage', C.gruppenSpieltage.length, 'BL ' + C.gruppenSpieltage.join(', ')) +
+    statCard('Siegprämie', '20 €', 'plus Trophäe') +
+    statCard('Finale', C.finale[0] + '. Spieltag', 'Bundesliga') +
+    '</div>';
+
+  if (!tabellen) {
+    h += card('Gruppen noch nicht ausgelost', '', '<div class="empty" style="text-align:left;max-width:620px;margin:0 auto">' +
+      '<p style="color:var(--ink);font-weight:600;margin-top:0">Sobald die Auslosung steht, rechnet diese Seite von allein.</p>' +
+      '<p>Kickbase kennt euren Pokal nicht – die Tabellen entstehen hier aus den Kickbase-Punkten der jeweiligen ' +
+      'Bundesligaspieltage. Dafür fehlt nur die Gruppeneinteilung.</p>' +
+      '<p class="psub">Trag sie in <code>liga.js</code> unter <code>coppa.gruppen</code> ein, ' +
+      'zum Beispiel: <code>{ A: ["433938","689145",…], B: […], C: […] }</code> – ' +
+      'die Manager-Nummern findest du im Reiter „Mitspieler“.</p></div>');
+  } else {
+    Object.keys(tabellen).forEach(g => {
+      const tab = tabellen[g];
+      h += card('Gruppo ' + g, 'Plätze 1 und 2 direkt in die K.-o.-Phase', '<div class="tbl-wrap"><table>' +
+        '<thead><tr><th>#</th><th>Manager</th><th class="num">Sp</th><th class="num">S</th><th class="num">U</th>' +
+        '<th class="num">N</th><th class="num">Punkte für</th><th class="num">Diff</th><th class="num">Pkt</th></tr></thead><tbody>' +
+        tab.map((r, i) => '<tr class="' + (String(r.id) === String(S.meId) ? 'me' : '') + (i < 2 ? '' : '') + '">' +
+          '<td><b>' + (i + 1) + '</b></td><td>' + playerCell(r.n, r.u && r.u.uim, i < 2 ? 'qualifiziert' : 'Lucky Loosers') + '</td>' +
+          '<td class="num">' + r.sp + '</td><td class="num">' + r.s + '</td><td class="num">' + r.u_ + '</td>' +
+          '<td class="num">' + r.n_ + '</td><td class="num">' + num(r.pf) + '</td>' +
+          '<td class="num">' + (r.pf - r.pa > 0 ? '+' : '') + num(r.pf - r.pa) + '</td>' +
+          '<td class="num"><b>' + r.p + '</b></td></tr>').join('') +
+        '</tbody></table></div>');
+    });
+  }
+
+  // Terminplan
+  h += card('Turnierverlauf', 'gekoppelt an die Bundesligaspieltage', '<div class="tbl-wrap"><table><tbody>' +
+    [['Gruppenphase', C.gruppenSpieltage.join('. · ') + '. Spieltag'],
+     ['Lucky Loosers', C.luckyLoosers.join('. · ') + '. Spieltag'],
+     ['Viertelfinale', C.viertelfinale.join('. + ') + '. Spieltag'],
+     ['Halbfinale', C.halbfinale.join('. + ') + '. Spieltag'],
+     ['Finale', C.finale[0] + '. Spieltag']
+    ].map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td class="num">' + esc(r[1]) + '</td></tr>').join('') +
+    '</tbody></table></div>');
+
+  h += card('Bisherige Sieger', C.historie.length + ' Editionen', '<div class="tbl-wrap"><table><tbody>' +
+    C.historie.map(x => '<tr><td>' + esc(x[0]) + '</td><td><b>🏆 ' + esc(x[1]) + '</b></td></tr>').join('') +
+    '</tbody></table></div>');
+
+  v.innerHTML = h;
+}
+
 /* ---------- 9) Archiv (vom Sammel-Roboter aufgebaute Historie) ---------- */
 function vArchive(v) {
   const A = S.archive;
@@ -982,6 +1187,10 @@ async function openPlayer(pid) {
         statCard('Status', statusPill(d.st), (d.y || 0) + ' Gelbe · ' + (d.r || 0) + ' Rote') +
         (chg != null ? statCard('Wert seit ' + (mvPoints.length ? dmy(dayToDate(mvPoints[0].x)) : ''), deltaHtml(chg, eurShort), first ? nf1.format(chg / first * 100) + ' %' : '') : '') +
       '</div>' +
+      (window.richtpreis ? card('Auktion nach Ligaregel', 'Regel X · Richtpreis auf ' + eurShort(window.LIGA.richtpreisSchritt) + ' aufgerundet',
+        '<div class="chips"><span class="chip" style="background:var(--surface-2)">Richtpreis <b>' + eur(window.richtpreis(d.mv)) + '</b></span>' +
+        window.gebotsstufen(window.richtpreis(d.mv), 4).slice(1).map(g => '<span class="chip">' + eur(g) + '</span>').join('') +
+        '</div><div class="psub" style="margin-top:10px">Externer Verkauf: mindestens <b>' + eur(d.mv) + '</b> (kein Underpay, Regel XII).</div>') : '') +
       card('Marktwertverlauf', mvPoints.length ? mvPoints.length + ' Tage' : '', '<div id="c-pmv"></div>') +
       (ptPoints.length ? card('Punkte je Spieltag', '', '<div id="c-ppt"></div>') : '') +
       (th && th.it && th.it.length ? card('Transferhistorie', '', '<div class="tbl-wrap"><table><tbody>' +
