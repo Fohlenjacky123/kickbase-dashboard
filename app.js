@@ -420,6 +420,15 @@ function meRow() {
 
 /* ---------- 1) Überblick ---------- */
 function vHome(v) {
+  // Kam gar nichts an, liegt es fast immer an einer fehlenden Liga-ID -
+  // dann lieber deutlich sagen als lauter Striche zeigen.
+  if (!S.ranking && !S.squad && !S.me) {
+    v.innerHTML = card('Keine Daten empfangen', '', '<div class="empty">' +
+      'Für diese Liga kam keine Antwort von Kickbase.<br><br>' +
+      (S.leagueId ? 'Abgefragte Liga: <code>' + esc(S.leagueId) + '</code><br>' : 'Es ist keine Liga ausgewählt.<br>') +
+      'Versuch es mit dem ⟳-Knopf oben rechts oder melde dich neu an.</div>');
+    return;
+  }
   const me = meRow(), us = (S.ranking && S.ranking.us) || [];
   const b = (S.budget && S.budget.b) != null ? S.budget.b : (S.me && S.me.b);
   const squad = (S.squad && S.squad.it) || [];
@@ -1100,7 +1109,13 @@ function logout(msg) {
 }
 
 async function afterLogin(leagues) {
-  S.leagues = (leagues && leagues.it) || [];
+  // Die Ligaliste kommt je nach Endpunkt mit unterschiedlichen Feldnamen:
+  // /v4/leagues/selection liefert {i, n}, die Login-Antwort {id, name}.
+  // Beides auf {i, n} vereinheitlichen, sonst bleibt die Liga-ID leer.
+  S.leagues = (((leagues && leagues.it) || []).map(l => Object.assign({}, l, {
+    i: l.i != null ? l.i : l.id,
+    n: l.n != null ? l.n : l.name
+  }))).filter(l => l.i != null);
   const sel = $('#leagueSel');
   sel.innerHTML = S.leagues.map(l => '<option value="' + esc(l.i) + '">' + esc(l.n) + '</option>').join('');
   const saved = localStorage.getItem(LS_LEAGUE);
@@ -1137,7 +1152,10 @@ $('#loginForm').onsubmit = async e => {
     if (r.u && r.u.id) S.meId = r.u.id;
     localStorage.setItem(LS_TOKEN, JSON.stringify({ tkn: r.tkn, tknex: r.tknex, uid: r.u && r.u.id }));
     $('#pw').value = '';
-    await afterLogin(r.srvl ? { it: r.srvl } : await api.get('/v4/leagues/selection', 0));
+    // Bevorzugt die Auswahlliste abfragen; die Ligen aus der Login-Antwort
+    // dienen nur als Rückfallebene.
+    const sel = await api.get('/v4/leagues/selection', 0);
+    await afterLogin(sel && sel.it && sel.it.length ? sel : { it: r.srvl || [] });
   } catch (err) {
     const msg = err.code === 401 || /401/.test(err.message)
       ? 'E-Mail oder Passwort stimmt nicht.'
