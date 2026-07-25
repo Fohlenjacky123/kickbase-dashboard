@@ -418,6 +418,27 @@ function meRow() {
   return S.ranking.us.find(u => String(u.i) === String(S.meId)) || null;
 }
 
+/* Kickbase meldet nach einem Ligareset "sp" und "tv" als 0, obwohl die
+   Punkte je Spieltag vorhanden sind. Dann lieber selbst rechnen, sonst
+   steht "0 Punkte" neben einem gefüllten Verlaufsdiagramm. */
+const lpSum = u => ((u && u.lp) || []).reduce((a, c) => a + (c || 0), 0);
+function spOf(u) {
+  if (!u) return 0;
+  return (u.sp != null && u.sp > 0) ? u.sp : lpSum(u);
+}
+function tvOf(u) {
+  if (u && u.tv) return u.tv;
+  // Ersatzweise der Kaderwert - für den eigenen Kader kennen wir ihn genau
+  if (u && String(u.i) === String(S.meId)) {
+    const sq = (S.squad && S.squad.it) || [];
+    if (sq.length) return sq.reduce((s, p) => s + (p.mv || 0), 0);
+  }
+  const m = S.managers[u && u.i];
+  const it = m && m.squad && m.squad.it;
+  if (it && it.length) return it.reduce((s, p) => s + (p.mv || 0), 0);
+  return (u && u.tv) || 0;
+}
+
 /* ---------- 1) Überblick ---------- */
 function vHome(v) {
   // Kam gar nichts an, liegt es fast immer an einer fehlenden Liga-ID -
@@ -432,18 +453,20 @@ function vHome(v) {
   const me = meRow(), us = (S.ranking && S.ranking.us) || [];
   const b = (S.budget && S.budget.b) != null ? S.budget.b : (S.me && S.me.b);
   const squad = (S.squad && S.squad.it) || [];
-  const teamVal = me ? me.tv : squad.reduce((s, p) => s + (p.mv || 0), 0);
+  const teamVal = me ? tvOf(me) : squad.reduce((s, p) => s + (p.mv || 0), 0);
   const dayVal = squad.reduce((s, p) => s + (p.sdmvt || 0), 0);
-  const avg = me && me.lp && me.lp.length ? me.lp.filter(x => x != null).reduce((a, c) => a + c, 0) / me.lp.filter(x => x != null).length : null;
-  const best = us.length ? Math.max(...us.map(u => u.sp || 0)) : 0;
-  const gap = me ? best - (me.sp || 0) : 0;
+  const myPts = spOf(me);
+  const played = me && me.lp ? me.lp.filter(x => x != null).length : 0;
+  const avg = played ? myPts / played : null;
+  const best = us.length ? Math.max(...us.map(spOf)) : 0;
+  const gap = me ? best - myPts : 0;
 
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
     statCard('Mein Platz', me ? (me.spl + '.') : '–', us.length ? 'von ' + us.length + ' Managern' : '') +
-    statCard('Gesamtpunkte', me ? num(me.sp) : '–', avg ? 'Ø ' + num(avg) + ' je Spieltag' : '') +
+    statCard('Gesamtpunkte', me ? num(myPts) : '–', avg ? 'Ø ' + num(avg) + ' je Spieltag' : 'Saison noch nicht gestartet') +
     statCard('Teamwert', eur(teamVal), deltaHtml(dayVal) + ' <span style="color:var(--muted)">heute</span>') +
     statCard('Budget', eur(b), b != null && teamVal ? 'Gesamt ' + eurShort(b + teamVal) : '') +
-    statCard('Rückstand Platz 1', me && me.spl > 1 ? num(gap) : '—', me && me.spl === 1 ? 'Du führst 🏆' : 'Punkte') +
+    statCard('Rückstand Platz 1', gap > 0 ? num(gap) : '—', gap > 0 ? 'Punkte' : (myPts > 0 ? 'Du führst 🏆' : 'noch keine Punkte')) +
     '</div>';
 
   // Eigene Leistung gegen die Liga - drei klar unterscheidbare Linien
@@ -509,11 +532,12 @@ function vTable(v) {
   const cols = [
     { label: '#', num: true, val: u => u.spl, html: u => '<b>' + u.spl + '</b>' },
     { label: 'Manager', val: u => u.n, html: u => playerCell(u.n, u.uim, u.adm ? 'Admin' : '') },
-    { label: 'Punkte', num: true, val: u => u.sp, html: u => '<b>' + num(u.sp) + '</b>' },
-    { label: 'Ø/Spieltag', num: true, val: u => { const l = (u.lp || []).filter(x => x != null); return l.length ? Math.round(l.reduce((a, c) => a + c, 0) / l.length) : 0; }, html: u => { const l = (u.lp || []).filter(x => x != null); return num(l.length ? l.reduce((a, c) => a + c, 0) / l.length : 0); } },
+    { label: 'Punkte', num: true, val: u => spOf(u), html: u => '<b>' + num(spOf(u)) + '</b>' },
+    { label: 'Ø/Spieltag', num: true, val: u => { const n = (u.lp || []).filter(x => x != null).length; return n ? spOf(u) / n : 0; },
+      html: u => { const n = (u.lp || []).filter(x => x != null).length; return num(n ? spOf(u) / n : 0); } },
     { label: 'Letzter ST', num: true, val: u => u.mdp, html: u => num(u.mdp) },
     { label: 'Bester ST', num: true, val: u => Math.max(0, ...(u.lp || []).filter(x => x != null)), html: u => num(Math.max(0, ...(u.lp || []).filter(x => x != null))) },
-    { label: 'Teamwert', num: true, val: u => u.tv, html: u => eurShort(u.tv) },
+    { label: 'Teamwert', num: true, val: u => tvOf(u), html: u => eurShort(tvOf(u)) },
     { label: 'Verlauf', num: false, val: u => 0, sortVal: () => 0,
       html: u => sparkline((u.lp || []).map((p, i) => ({ x: i, y: p || 0 })), 'var(--s1)') }
   ];
@@ -658,18 +682,19 @@ function vManagers(v) {
   const cols = [
     { label: '#', num: true, val: u => u.spl },
     { label: 'Manager', val: u => u.n, html: u => playerCell(u.n, u.uim, u.adm ? 'Admin' : '') },
-    { label: 'Punkte', num: true, val: u => u.sp, html: u => '<b>' + num(u.sp) + '</b>' },
-    { label: 'Teamwert', num: true, val: u => u.tv, html: u => eurShort(u.tv) },
+    { label: 'Punkte', num: true, val: u => spOf(u), html: u => '<b>' + num(spOf(u)) + '</b>' },
+    { label: 'Teamwert', num: true, val: u => tvOf(u), html: u => eurShort(tvOf(u)) },
     { label: 'Gewinn', num: true, val: u => u._prft, html: u => u._prft == null ? '<span class="skel" style="display:inline-block;width:56px;height:12px"></span>' : deltaHtml(u._prft) },
     { label: 'ST-Siege', num: true, val: u => u._mdw, html: u => u._mdw == null ? '–' : num(u._mdw) },
     { label: 'Transfers', num: true, val: u => u._tr, html: u => num(u._tr) },
-    { label: 'Pkt/Mio TW', num: true, val: u => u.tv ? u.sp / (u.tv / 1e6) : 0, html: u => u.tv ? nf1.format(u.sp / (u.tv / 1e6)) : '–' }
+    { label: 'Pkt/Mio TW', num: true, val: u => tvOf(u) ? spOf(u) / (tvOf(u) / 1e6) : 0,
+      html: u => tvOf(u) ? nf1.format(spOf(u) / (tvOf(u) / 1e6)) : '–' }
   ];
   sortTable($('#t-mgr', v), cols, rows, { sort: 0, dir: 1,
     rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
 
-  barChart($('#c-mgr1', v), us.slice().sort((a, b) => b.tv - a.tv).map((u, i) => ({
-    label: u.n, value: u.tv, img: u.uim, color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s3)',
+  barChart($('#c-mgr1', v), us.slice().sort((a, b) => tvOf(b) - tvOf(a)).map(u => ({
+    label: u.n, value: tvOf(u), img: u.uim, color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s3)',
     onClick: () => openManager(u.i) })), { fmt: eurShort });
 
   const withP = rows.filter(r => r._prft != null).sort((a, b) => b._prft - a._prft);
@@ -677,8 +702,8 @@ function vManagers(v) {
     label: u.n, value: u._prft, img: u.uim, color: u._prft >= 0 ? 'var(--good)' : 'var(--crit)',
     onClick: () => openManager(u.i) })), { fmt: eurShort });
 
-  barChart($('#c-mgr3', v), us.slice().filter(u => u.tv).sort((a, b) => (b.sp / b.tv) - (a.sp / a.tv)).map(u => ({
-    label: u.n, value: u.sp / (u.tv / 1e6), img: u.uim,
+  barChart($('#c-mgr3', v), us.slice().filter(u => tvOf(u)).sort((a, b) => (spOf(b) / tvOf(b)) - (spOf(a) / tvOf(a))).map(u => ({
+    label: u.n, value: spOf(u) / (tvOf(u) / 1e6), img: u.uim,
     color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s7)',
     onClick: () => openManager(u.i) })), { fmt: x => nf1.format(x) + ' P/Mio' });
 }
