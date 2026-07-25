@@ -1415,10 +1415,10 @@ $('#demoBtn').onclick = () => {
 $('#refreshBtn').onclick = () => { if (!api.demo) loadLeague(true); else { loadDemo(); toast('Demo neu gewürfelt'); } };
 $('#logoutBtn').onclick = () => { if (confirm('Wirklich abmelden?')) logout(); };
 $('#themeBtn').onclick = () => {
-  const cur = document.documentElement.getAttribute('data-theme');
-  const next = cur === 'dark' ? 'light' : cur === 'light' ? '' : 'dark';
-  if (next) document.documentElement.setAttribute('data-theme', next);
-  else document.documentElement.removeAttribute('data-theme');
+  // Dunkel ist der Ligalook und damit die Voreinstellung; hell bleibt wählbar.
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem(LS_THEME, next);
   if ($('#app').classList.contains('on')) renderAll();
 };
