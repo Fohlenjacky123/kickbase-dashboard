@@ -5,23 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0c0c0e">
 <title>xGuys1Cup · Kickbase Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐴</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   xGuys1Cup — Designsprache der Ligaseite
-   Signalfarbe #ff5500, Nachtgrund mit Punktraster,
-   Archivo Black kursiv in Versalien, JetBrains Mono für Zahlen.
-   Die Diagrammfarben bleiben die geprüfte, farbfehlsichtigkeits-
-   sichere Palette — nur das Beiwerk ist Marke.
+   xGuys1Cup — Borussia-Mönchengladbach-Designsprache
+   Schwarz/Grün/Weiß, Nachtgrund mit Punktraster, Archivo Black
+   kursiv in Versalien, JetBrains Mono für Zahlen. Das Grün ist
+   bewusst kühler/gedeckter als die Diagrammfarben gewählt, damit
+   es nicht mit "im Plus" (--good) oder Serie 3 (--s3) verwechselt
+   wird — Markenfarbe und Datenaussage sollen getrennt bleiben.
+   Ein einziger Grünton läuft unverändert durch beide Themes,
+   genau wie zuvor das Orange (--accent-ink liefert die passende
+   Textfarbe auf Flächen mit Akzentfarbe). Die Diagrammfarben
+   bleiben die geprüfte, farbfehlsichtigkeitssichere Palette.
    ============================================================ */
 :root, :root[data-theme="dark"] {
   color-scheme: dark;
-  --accent:     #ff5500;
-  --accent-dim: #c74300;
-  --accent-glow: rgba(255,85,0,.28);
+  --accent:     #1f9d55;
+  --accent-dim: #146239;
+  --accent-ink: #ffffff;
+  --accent-hover: #29b567;
+  --accent-glow: rgba(31,157,85,.30);
+  --row-hl:   rgba(31,157,85,.09);
+  --row-hl-2: rgba(31,157,85,.15);
   --gold:       #ffd700;
   --page:       #0c0c0e;
   --surface-1:  #1a1c20;
@@ -64,7 +73,7 @@
   --crit:#d03b3b; --good-text:#006300;
   --shadow: 0 1px 2px rgba(12,12,14,.05), 0 4px 14px rgba(12,12,14,.07);
   --dots: rgba(12,12,14,0.05);
-  --accent-glow: rgba(255,85,0,.18);
+  --accent-glow: rgba(31,157,85,.18);
 }
 
 * { box-sizing: border-box; }
@@ -82,7 +91,7 @@ body {
 }
 button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
 button { cursor: pointer; }
-a { color: var(--accent); }
+a { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 
 /* Alles Zahlenhafte in Mono — das gibt den Datenlook */
 .num, .val, td.num, th.num, code, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -94,7 +103,7 @@ a { color: var(--accent); }
   position: fixed; inset: 0; z-index: 100;
   display: grid; place-items: center;
   background:
-    radial-gradient(1100px 520px at 50% -10%, rgba(255,85,0,.16), transparent 65%),
+    radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 65%),
     var(--page);
   padding: 20px;
 }
@@ -109,7 +118,7 @@ a { color: var(--accent); }
 }
 .login-card::before {
   content:''; position:absolute; top:0; left:0; right:0; height:3px;
-  background: linear-gradient(90deg, var(--accent), #ff9500 60%, transparent);
+  background: linear-gradient(90deg, var(--accent), transparent);
 }
 .login-logo { font-size: 34px; line-height:1; margin-bottom: 16px; }
 .login-card h1 {
@@ -140,11 +149,11 @@ a { color: var(--accent); }
 .btn:hover { border-color: var(--accent); }
 .btn:active { transform: translateY(1px); }
 .btn-primary {
-  background: var(--accent); border-color: var(--accent); color: #fff; width: 100%;
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink); width: 100%;
   text-transform: uppercase; letter-spacing: 1px; font-size: 13px;
   box-shadow: 0 4px 18px var(--accent-glow);
 }
-.btn-primary:hover { background: #ff6a1f; border-color: #ff6a1f; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-primary:disabled { opacity:.55; cursor: default; }
 .privacy {
   margin-top: 20px; padding: 13px 15px;
@@ -301,8 +310,8 @@ td { padding: 9px 10px; border-bottom: 1px solid var(--grid); vertical-align: mi
 tbody tr:last-child td { border-bottom: none; }
 tbody tr { transition: background .12s; }
 tbody tr:hover { background: var(--surface-3); }
-tbody tr.me { background: rgba(255,85,0,.09); box-shadow: inset 2px 0 0 var(--accent); }
-tbody tr.me:hover { background: rgba(255,85,0,.15); }
+tbody tr.me { background: var(--row-hl); box-shadow: inset 2px 0 0 var(--accent); }
+tbody tr.me:hover { background: var(--row-hl-2); }
 .num { text-align: right; white-space: nowrap; }
 .tbl-wrap { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
 .tbl-scroll { max-height: 560px; overflow-y: auto; }
@@ -340,7 +349,7 @@ tbody tr.me:hover { background: rgba(255,85,0,.15); }
   transition: border-color .16s, color .16s;
 }
 .chip:hover { border-color: var(--accent); color: var(--ink); }
-.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .search {
   padding: 9px 13px; border-radius: 7px; border:1px solid var(--border-2);
   background: var(--surface-2); min-width: 190px; flex: 1; max-width: 320px;
@@ -405,7 +414,7 @@ svg.chart { display:block; width: 100%; overflow: visible; }
 
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(90px);
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--accent-ink);
   padding: 12px 20px; border-radius: 8px;
   font-family: var(--mono); font-size: 12px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .6px;
@@ -446,7 +455,7 @@ code {
 <!-- ===================== LOGIN ===================== -->
 <div id="login">
   <div class="login-card">
-    <div class="login-logo">⚽</div>
+    <div class="login-logo">🐴</div>
     <h1>Kickbase<span class="hl">Dashboard</span></h1>
     <p class="sub">Kein Glück. Kein Pardon. Alle Zahlen deiner Liga an einem Ort.</p>
 
@@ -480,7 +489,7 @@ code {
 <div id="app">
   <div class="topbar">
     <div class="topbar-in">
-      <div class="brand"><span class="dot">⚽</span><span class="txt">xGuys</span></div>
+      <div class="brand"><span class="dot">🐴</span><span class="txt">xGuys</span></div>
       <select class="sel" id="leagueSel" aria-label="Liga wählen"></select>
       <div class="spacer"></div>
       <span class="hint" id="freshness" style="color:var(--muted)"></span>
@@ -493,6 +502,7 @@ code {
 
   <main>
     <div class="view" id="v-home"></div>
+    <div class="view" id="v-preseason"></div>
     <div class="view" id="v-table"></div>
     <div class="view" id="v-squad"></div>
     <div class="view" id="v-market"></div>
