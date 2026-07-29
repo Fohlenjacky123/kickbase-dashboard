@@ -464,6 +464,17 @@ function tageSeitReset() {
   const r = letzterReset();
   return r == null ? 0 : Math.max(0, Math.floor((Date.now() - r) / 86400000));
 }
+/* Kickbase liefert bei /managers/{id}/transfer die komplette Transferhistorie
+   eines Managers über alle Saisons hinweg - nicht nur seit dem letzten Reset.
+   Ohne diesen Filter fließen Käufe/Verkäufe aus Vorjahren mit in den "seit
+   Ligastart"-Saldo ein, wodurch Manager mit langer Historie einen völlig
+   falschen Kontostand bekämen, obwohl seit dem Reset noch gar nichts passiert ist. */
+function seitReset(transfers) {
+  const r = letzterReset();
+  if (!transfers) return [];
+  if (r == null) return transfers;
+  return transfers.filter(t => { const ms = new Date(t.dt).getTime(); return !isNaN(ms) && ms >= r; });
+}
 function auflaufpraemie(tage) {
   const schritt = 100000 / 10, rampTage = 10, voll = 100000;
   if (tage <= 0) return 0;
@@ -481,7 +492,7 @@ function budgetVon(uid) {
   const m = S.managers[uid];
   const tr = m && m.transfers && m.transfers.it;
   if (!tr) return null;
-  const saldo = tr.reduce((s, t) => s + (t.tty === 1 ? -(t.trp || 0) : (t.trp || 0)), 0);
+  const saldo = seitReset(tr).reduce((s, t) => s + (t.tty === 1 ? -(t.trp || 0) : (t.trp || 0)), 0);
   return { wert: startBudget() + auflaufpraemie(tageSeitReset()) + saldo, echt: false };
 }
 function kaderGroesseVon(uid) {
@@ -631,6 +642,10 @@ function preseasonRows() {
     const sq = (m.squad && m.squad.it) ||
                (String(u.i) === String(S.meId) ? ((S.squad && S.squad.it) || null) : null);
     const tr = (m.transfers && m.transfers.it) || null;
+    // Nur Transfers seit dem letzten Reset zählen - die API liefert die
+    // komplette Historie über alle Saisons, sonst verzerren alte Transfers
+    // aus Vorjahren jeden "seit Ligastart"-Wert (Kontostand, Aktivität, …).
+    const trSeit = tr ? seitReset(tr) : null;
     const bud = budgetVon(u.i);
     const tv = tvOf(u);
     const clubs = {}, posCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
@@ -641,17 +656,17 @@ function preseasonRows() {
     const findings = sq ? window.ligaCheck(sq, ti.names, ti.ids) : null;
     const expPts = sq && sq.length ? sq.reduce((s, p) => s + (p.ap || 0), 0) : null;
     const fitCount = sq ? sq.filter(p => !p.st || p.st === 0).length : null;
-    const kaufSumme = tr ? tr.filter(t2 => t2.tty === 1).reduce((s, t2) => s + (t2.trp || 0), 0) : null;
-    const verkaufSumme = tr ? tr.filter(t2 => t2.tty === 2).reduce((s, t2) => s + (t2.trp || 0), 0) : null;
-    const letzteTransfer = tr && tr.length ? Math.max(...tr.map(t2 => new Date(t2.dt).getTime())) : (tr ? 0 : null);
+    const kaufSumme = trSeit ? trSeit.filter(t2 => t2.tty === 1).reduce((s, t2) => s + (t2.trp || 0), 0) : null;
+    const verkaufSumme = trSeit ? trSeit.filter(t2 => t2.tty === 2).reduce((s, t2) => s + (t2.trp || 0), 0) : null;
+    const letzteTransfer = trSeit && trSeit.length ? Math.max(...trSeit.map(t2 => new Date(t2.dt).getTime())) : (tr ? 0 : null);
     return {
       u, i: u.i, n: u.n, uim: u.uim,
       sq, sqCount: sq ? sq.length : null, posCounts: sq ? posCounts : null, fitCount,
       bud, tv, netto: bud ? bud.wert + tv : null,
-      kaeufe: tr ? tr.filter(t2 => t2.tty === 1).length : null,
-      verkaeufe: tr ? tr.filter(t2 => t2.tty === 2).length : null,
+      kaeufe: trSeit ? trSeit.filter(t2 => t2.tty === 1).length : null,
+      verkaeufe: trSeit ? trSeit.filter(t2 => t2.tty === 2).length : null,
       kaufSumme, verkaufSumme, letzteTransfer,
-      tr: tr ? tr.length : null,
+      tr: trSeit ? trSeit.length : null,
       clubs, findings, expPts
     };
   });
@@ -684,10 +699,11 @@ function vPreseason(v) {
   // Alle Käufe ligaweit (aus jedem Manager-Transferverlauf) - Grundlage für
   // Rekordtransfer und Mini-Feed. Nur "Kauf"-Einträge, damit jede echte
   // Transaktion nur einmal auftaucht statt doppelt (Käufer- und Verkäufersicht).
+  // Nur seit dem letzten Reset, sonst tauchen Transfers aus Vorjahren auf.
   const alleKaeufe = [];
   rows.forEach(r => {
     const tr = (S.managers[r.i] && S.managers[r.i].transfers && S.managers[r.i].transfers.it) || [];
-    tr.filter(t => t.tty === 1).forEach(t => alleKaeufe.push({
+    seitReset(tr).filter(t => t.tty === 1).forEach(t => alleKaeufe.push({
       kaeufer: r.n, kaeuferId: r.i, pn: t.pn, pi: t.pi, pim: t.pim,
       trp: t.trp, verkaeufer: t.othnm, dt: t.dt
     }));
@@ -1098,7 +1114,9 @@ function vManagers(v) {
     const d = (S.managers[u.i] || {}).dashboard || {};
     const t = (S.managers[u.i] || {}).transfers || {};
     const bud = budgetVon(u.i);
-    return Object.assign({ _id: u.i, _prft: d.prft, _mdw: d.mdw, _tr: (t.it || []).length,
+    // Nur Transfers seit dem letzten Reset zählen, sonst passt die Zahl nicht
+    // zum "seit Ligastart"-Kontostand daneben (API liefert alle Saisons).
+    return Object.assign({ _id: u.i, _prft: d.prft, _mdw: d.mdw, _tr: seitReset(t.it || []).length,
                             _sq: kaderGroesseVon(u.i), _bud: bud }, u);
   });
   const kaderMax = (window.LIGA && window.LIGA.maxKader) || 16;
