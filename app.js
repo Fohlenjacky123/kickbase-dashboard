@@ -270,7 +270,7 @@ function lineChart(host, series, opts) {
       const p = s.points[i] || s.points.find(q => q.x === ref.x);
       if (!p) return;
       h += '<div class="tt-r"><span class="k"><i class="legend sw" style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' +
-           (s.color || sc(k)) + '"></i>' + esc(s.name) + '</span><span class="v">' + esc(o.fmtY(p.y)) + '</span></div>';
+           (s.color || sc(k)) + '">' + esc(s.name) + '</span><span class="v">' + esc(o.fmtY(p.y)) + '</span></div>';
     });
     showTip(h, cx, cy);
   };
@@ -482,7 +482,12 @@ function auflaufpraemie(tage) {
   return schritt * rampTage * (rampTage + 1) / 2 + (tage - rampTage) * voll;
 }
 function startBudget() {
-  return (S.budget && S.budget.bs) || 200e6; // Ligastart & Soft-Reset setzen laut Regelwerk auf 200 Mio zurück
+  // Fester Wert aus dem Regelwerk (liga.js): Ligastart & Soft-Reset setzen auf 200 Mio zurück.
+  // S.budget ist die private Budget-Antwort des eigenen Kontos und enthält keinen
+  // verlässlichen "Startbudget"-Wert für die ganze Liga - ein Feld wie "bs" darf
+  // hier nicht geraten verwendet werden, sonst rutscht bei jedem Manager außer
+  // einem selbst ein falscher (viel zu kleiner) Kontostand rein.
+  return 200e6;
 }
 function budgetVon(uid) {
   if (String(uid) === String(S.meId)) {
