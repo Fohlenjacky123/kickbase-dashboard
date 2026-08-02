@@ -270,7 +270,7 @@ function lineChart(host, series, opts) {
       const p = s.points[i] || s.points.find(q => q.x === ref.x);
       if (!p) return;
       h += '<div class="tt-r"><span class="k"><i class="legend sw" style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' +
-           (s.color || sc(k)) + '">' + esc(s.name) + '</span><span class="v">' + esc(o.fmtY(p.y)) + '</span></div>';
+           (s.color || sc(k)) + '"></i>' + esc(s.name) + '</span><span class="v">' + esc(o.fmtY(p.y)) + '</span></div>';
     });
     showTip(h, cx, cy);
   };
@@ -388,13 +388,8 @@ const TABS = [
   ['table',    'Liga-Tabelle'],
   ['squad',    'Mein Kader'],
   ['market',   'Transfermarkt'],
-  ['managers', 'Mitspieler'],
-  ['players',  'Spieler-Analyse'],
   ['buli',     'Bundesliga'],
-  ['feed',     'Aktivitäten'],
-  ['coppa',    'Coppa Corona'],
-  ['liga',     'Regeln & Battles'],
-  ['archive',  'Archiv']
+  ['liga',     'Regeln & Battles']
 ];
 let curTab = 'home';
 
@@ -410,8 +405,7 @@ function renderTabs() {
 function renderAll() {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + curTab));
   const fn = { home: vHome, preseason: vPreseason, table: vTable, squad: vSquad, market: vMarket,
-               managers: vManagers, players: vPlayers, buli: vBuli, feed: vFeed,
-               coppa: vCoppa, liga: vLiga, archive: vArchive }[curTab];
+               buli: vBuli, liga: vLiga }[curTab];
   if (fn) { try { fn($('#v-' + curTab)); } catch (e) { console.error(e); $('#v-' + curTab).innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
 }
 
@@ -528,15 +522,12 @@ function vHome(v) {
   const myPts = spOf(me);
   const played = me && me.lp ? me.lp.filter(x => x != null).length : 0;
   const avg = played ? myPts / played : null;
-  const best = us.length ? Math.max(...us.map(spOf)) : 0;
-  const gap = me ? best - myPts : 0;
 
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
     statCard('Mein Platz', me ? (me.spl + '.') : '–', us.length ? 'von ' + us.length + ' Managern' : '') +
     statCard('Gesamtpunkte', me ? num(myPts) : '–', avg ? 'Ø ' + num(avg) + ' je Spieltag' : 'Saison noch nicht gestartet') +
     statCard('Teamwert', eur(teamVal), deltaHtml(dayVal) + ' <span style="color:var(--muted)">heute</span>') +
     statCard('Budget', eur(b), b != null && teamVal ? 'Gesamt ' + eurShort(b + teamVal) : '') +
-    statCard('Rückstand Platz 1', gap > 0 ? num(gap) : '—', gap > 0 ? 'Punkte' : (myPts > 0 ? 'Du führst 🏆' : 'noch keine Punkte')) +
     '</div>';
 
   // Regelverstöße gehören ganz nach oben - eine Sanktion kostet einen
@@ -549,30 +540,6 @@ function vHome(v) {
            '<span class="hint">Sanktion droht – Details im Reiter „Regeln & Battles“</span></div>' + ruleCards(krit);
     }
   }
-
-  // Eigene Leistung gegen die Liga - drei klar unterscheidbare Linien
-  // statt aller Manager übereinander (das wäre unlesbar).
-  const maxDay = Math.max(0, ...us.map(u => (u.lp || []).length));
-  const days = Array.from({ length: maxDay }, (_, d) => d);
-  const atDay = d => us.map(u => (u.lp || [])[d]).filter(x => x != null);
-  const series = [];
-  if (me) series.push({ name: 'Du', color: 'var(--s1)',
-    points: days.map(d => ({ x: d + 1, y: (me.lp || [])[d] || 0, label: 'Spieltag ' + (d + 1) })) });
-  series.push({ name: 'Ligadurchschnitt', color: 'var(--s4)',
-    points: days.map(d => { const a = atDay(d); return { x: d + 1, y: a.length ? a.reduce((s, c) => s + c, 0) / a.length : 0, label: 'Spieltag ' + (d + 1) }; }) });
-  series.push({ name: 'Bester des Spieltags', color: 'var(--s3)',
-    points: days.map(d => { const a = atDay(d); return { x: d + 1, y: a.length ? Math.max(...a) : 0, label: 'Spieltag ' + (d + 1) }; }) });
-  h += card('Deine Punkte gegen die Liga', 'je Spieltag', '<div id="c-home1"></div>');
-
-  // Rückstand zur Spitze - eine Linie sagt mehr als zehn
-  const cumAll = {}; us.forEach(u => cumAll[u.i] = 0);
-  const gapPts = days.map(d => {
-    us.forEach(u => { cumAll[u.i] += ((u.lp || [])[d] || 0); });
-    const mx = Math.max(...Object.values(cumAll));
-    return { x: d + 1, y: me ? cumAll[me.i] - mx : 0, label: 'Spieltag ' + (d + 1) };
-  });
-  const cum = [{ name: 'Rückstand', color: 'var(--s7)', points: gapPts }];
-  h += card('Abstand zur Tabellenspitze', '0 = Platz 1 · Verlauf über die Saison', '<div id="c-home2"></div>');
 
   // Top-Bewegungen im eigenen Kader
   const movers = squad.slice().sort((a, b) => (b.sdmvt || 0) - (a.sdmvt || 0));
@@ -589,8 +556,6 @@ function vHome(v) {
   }
 
   v.innerHTML = h;
-  lineChart($('#c-home1', v), series, { fmtX: x => 'ST ' + x, fmtY: num, height: 250, yZero: true });
-  lineChart($('#c-home2', v), cum, { fmtX: x => 'ST ' + x, fmtY: num, height: 220, area: true });
   barChart($('#c-home3', v), movers.filter(p => (p.sdmvt || 0) > 0).slice(0, 6).map(p => ({
     label: p.n, value: p.sdmvt, img: p.pim, color: 'var(--good)', onClick: () => openPlayer(p.i)
   })), { fmt: eurShort });
@@ -689,20 +654,10 @@ function vPreseason(v) {
 
   const buliStart = L && L.termine.find(t => /Bundesligaspieltag/i.test(t.t));
   const tageBuli = buliStart ? Math.ceil((new Date(buliStart.d).getTime() - jetzt) / 86400000) : null;
-  const naechsteCoppa = L && !L.coppa.gruppen && L.termine.find(t => /Bundesligaspieltag/i.test(t.t));
   const ns = nachtruheStatus();
 
-  const owned = {};
-  rows.forEach(r => (r.sq || []).forEach(p => { owned[p.pi || p.i] = r.n; }));
-  const allPlayers = (S.compPlayers && S.compPlayers.it) || null;
-  const frei = allPlayers ? allPlayers.filter(p => !owned[p.i]) : null;
-
-  const baustellen = rows.filter(r => r.sqCount != null && r.sqCount < kaderMax).length;
-  const budWerte = rows.filter(r => r.bud).map(r => r.bud.wert);
-  const avgBud = budWerte.length ? budWerte.reduce((s, x) => s + x, 0) / budWerte.length : null;
-
   // Alle Käufe ligaweit (aus jedem Manager-Transferverlauf) - Grundlage für
-  // Rekordtransfer und Mini-Feed. Nur "Kauf"-Einträge, damit jede echte
+  // Rekordtransfers und Mini-Feed. Nur "Kauf"-Einträge, damit jede echte
   // Transaktion nur einmal auftaucht statt doppelt (Käufer- und Verkäufersicht).
   // Nur seit dem letzten Reset, sonst tauchen Transfers aus Vorjahren auf.
   const alleKaeufe = [];
@@ -714,6 +669,26 @@ function vPreseason(v) {
     }));
   });
 
+  // Wer besitzt wen: primär aus dem geladenen Kader, zusätzlich aus den
+  // Transferdaten ergänzt (neuester Kauf je Spieler gewinnt). Der Kader
+  // eines Managers ist nach einem frischen Kauf nicht immer schon nachgeladen -
+  // ohne diese Ergänzung tauchen gerade gekaufte Spieler fälschlich noch
+  // in "Freie Top-Spieler" auf.
+  const ownedByTransfer = {};
+  alleKaeufe.forEach(t => {
+    const bisher = ownedByTransfer[t.pi];
+    if (!bisher || new Date(t.dt) > new Date(bisher.dt)) ownedByTransfer[t.pi] = { n: t.kaeufer, dt: t.dt };
+  });
+  const owned = {};
+  Object.entries(ownedByTransfer).forEach(([pi, o]) => { owned[pi] = o.n; });
+  rows.forEach(r => (r.sq || []).forEach(p => { owned[p.pi || p.i] = r.n; }));
+  const allPlayers = (S.compPlayers && S.compPlayers.it) || null;
+  const frei = allPlayers ? allPlayers.filter(p => !owned[p.i]) : null;
+
+  const baustellen = rows.filter(r => r.sqCount != null && r.sqCount < kaderMax).length;
+  const budWerte = rows.filter(r => r.bud).map(r => r.bud.wert);
+  const avgBud = budWerte.length ? budWerte.reduce((s, x) => s + x, 0) / budWerte.length : null;
+
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
     statCard('Bundesliga-Start', tageBuli != null ? (tageBuli <= 0 ? 'heute' : 'in ' + tageBuli + ' Tg') : '–', buliStart ? dmy(buliStart.d) : '') +
     statCard('Ø Kontostand Liga', avgBud != null ? eurShort(avgBud) : '…', 'geschätzt') +
@@ -722,27 +697,9 @@ function vPreseason(v) {
     statCard('Auktionen', ns.aktiv ? 'Nachtruhe' : 'offen', ns.aktiv ? 'bis ' + ns.label : 'Nachtruhe ab ' + ns.label) +
     '</div>';
 
-  if (naechsteCoppa) {
-    h += '<div class="card" style="border-color:color-mix(in srgb, var(--warn) 45%, transparent);margin-bottom:16px">' +
-      '<div style="display:flex;gap:11px;align-items:flex-start">' +
-      '<span style="font-size:17px;color:var(--warn);flex:none">!</span>' +
-      '<div><b>Coppa Corona: Gruppenauslosung fehlt noch</b>' +
-      '<div class="psub" style="margin-top:3px">Gruppenspieltage beginnen am ' + L.coppa.gruppenSpieltage[0] + '. Spieltag. ' +
-      'Sobald die Auslosung steht, in <code>liga.js</code> unter <code>coppa.gruppen</code> eintragen (Manager-Nummern stehen im Reiter „Mitspieler").</div></div>' +
-      '</div></div>';
-  }
+  h += card('Rekordtransfer je Manager', 'teuerster Kauf seit Ligastart · Zeile anklicken für Details', '<div id="pre-t8"></div>');
 
-  if (alleKaeufe.length) {
-    const rekord = alleKaeufe.slice().sort((a, b) => (b.trp || 0) - (a.trp || 0))[0];
-    h += card('Rekordtransfer bisher', dmy(rekord.dt),
-      '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
-        playerCell(rekord.pn, rekord.pim, esc(rekord.verkaeufer || 'Markt') + ' → <b>' + esc(rekord.kaeufer) + '</b>') +
-        '<span class="spacer" style="flex:1"></span>' +
-        '<div class="stat" style="padding:10px 16px;box-shadow:none"><div class="lbl">Preis</div><div class="val" style="font-size:22px">' + eur(rekord.trp) + '</div></div>' +
-      '</div>');
-  }
-
-  h += card('Beobachtungsliste', 'Wunschspieler merken · ★ in „Freie Top-Spieler" oder „Spieler-Analyse"', '<div id="pre-wl"></div>');
+  h += card('Beobachtungsliste', 'Wunschspieler merken · ★ in „Freie Top-Spieler"', '<div id="pre-wl"></div>');
 
   h += card('Gesamtvermögen', 'Kontostand + Teamwert · ≈ = geschätzter Kontostand', '<div id="pre-t1"></div>');
 
@@ -784,7 +741,7 @@ function vPreseason(v) {
   if (!allPlayers) {
     $('#pre-wl', v).innerHTML = '<div class="empty">Spielerdaten werden geladen …</div>';
   } else if (!wlPlayers.length) {
-    $('#pre-wl', v).innerHTML = '<div class="empty">Noch keine Spieler gemerkt. Klick den ★-Stern neben einem Spieler in „Freie Top-Spieler" oder „Spieler-Analyse".</div>';
+    $('#pre-wl', v).innerHTML = '<div class="empty">Noch keine Spieler gemerkt. Klick den ★-Stern neben einem Spieler in „Freie Top-Spieler".</div>';
   } else {
     const leistbarN = meinKonto != null ? wlPlayers.filter(p => p.mv <= meinKonto).length : null;
     const wlHost = $('#pre-wl', v);
@@ -817,13 +774,18 @@ function vPreseason(v) {
     });
   }
 
+  // Gewinn/Verlust durch Marktwertsteigerung: Marktwert minus Kaufpreis über
+  // den ganzen Kader. Fällt auf den Marktwert selbst zurück, wenn der Kaufpreis
+  // fehlt (z.B. Startkader) - sonst würde das wie ein Gewinn in Kaufpreis-Höhe aussehen.
+  const mvGewinnVon = r => r.sq ? r.sq.reduce((s, p) => s + ((p.mv || 0) - (p.prc || p.mv || 0)), 0) : null;
   const vermCols = [
-    { label: '#', num: true, val: r => r.u.spl },
     { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
     { label: 'Kontostand', num: true, val: r => r.bud && r.bud.wert,
       html: r => r.bud ? '<b>' + eurShort(r.bud.wert) + '</b>' + (r.bud.echt ? '' : ' <span class="psub">≈</span>')
                        : '<span class="skel" style="display:inline-block;width:50px;height:12px"></span>' },
     { label: 'Teamwert', num: true, val: r => r.tv, html: r => eurShort(r.tv) },
+    { label: 'MW-Gewinn/Verlust', num: true, val: mvGewinnVon,
+      html: r => { const g = mvGewinnVon(r); return g == null ? '–' : deltaHtml(g); } },
     { label: 'Gesamt', num: true, val: r => r.netto, html: r => r.netto != null ? '<b>' + eurShort(r.netto) + '</b>' : '–' }
   ];
   sortTable($('#pre-t1', v), vermCols, rows.map(r => Object.assign({ _id: r.i }, r)),
@@ -843,18 +805,30 @@ function vPreseason(v) {
     color: String(r.i) === String(S.meId) ? 'var(--s1)' : 'var(--s7)', onClick: () => openManager(r.i) })),
     { fmt: v2 => num(v2) + ' Pkt' });
 
-  // Kaderaufbau nach Position + Aufstellbereit
+  // Kaderaufbau nach Position + Aufstellbereit - Zahlen als kleine farbige
+  // Positions-Badges (gleiche Farben wie sonst im Dashboard) und der Gesamtplatz
+  // als 16er-Slot-Leiste, damit man den Baufortschritt auf einen Blick sieht.
+  const posDot = (n, pos, over) => n == null ? '<span class="skel" style="display:inline-block;width:24px;height:12px"></span>' :
+    '<span class="pill p' + pos + '"' + (over ? ' style="background:var(--crit);border-color:var(--crit);color:#fff"' : '') + '>' + n + '</span>';
+  const slotBar = (filled, total) => {
+    let s = '<span style="display:inline-flex;gap:2px;vertical-align:middle;margin-right:8px">';
+    for (let i = 0; i < total; i++) {
+      s += '<span style="width:7px;height:10px;border-radius:1px;display:inline-block;background:' + (i < filled ? 'var(--accent)' : 'var(--grid)') + '"></span>';
+    }
+    return s + '</span>';
+  };
   sortTable($('#pre-t5', v), [
     { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
     { label: 'TW', num: true, val: r => r.posCounts && r.posCounts[1],
-      html: r => !r.posCounts ? '–' : '<span style="' + (r.posCounts[1] > maxTorhueter ? 'color:var(--crit);font-weight:700' : '') + '">' + r.posCounts[1] + ' / ' + maxTorhueter + '</span>' },
-    { label: 'ABW', num: true, val: r => r.posCounts && r.posCounts[2], html: r => r.posCounts ? r.posCounts[2] : '–' },
-    { label: 'MF', num: true, val: r => r.posCounts && r.posCounts[3], html: r => r.posCounts ? r.posCounts[3] : '–' },
-    { label: 'ANG', num: true, val: r => r.posCounts && r.posCounts[4], html: r => r.posCounts ? r.posCounts[4] : '–' },
+      html: r => posDot(r.posCounts && r.posCounts[1], 1, r.posCounts && r.posCounts[1] > maxTorhueter) },
+    { label: 'ABW', num: true, val: r => r.posCounts && r.posCounts[2], html: r => posDot(r.posCounts && r.posCounts[2], 2) },
+    { label: 'MF', num: true, val: r => r.posCounts && r.posCounts[3], html: r => posDot(r.posCounts && r.posCounts[3], 3) },
+    { label: 'ANG', num: true, val: r => r.posCounts && r.posCounts[4], html: r => posDot(r.posCounts && r.posCounts[4], 4) },
     { label: 'Aufstellbereit', num: true, val: r => r.fitCount,
       html: r => r.fitCount == null ? '<span class="skel" style="display:inline-block;width:60px;height:12px"></span>' :
         '<span class="status-dot"><i style="background:' + (r.fitCount >= aufstellung ? 'var(--good)' : 'var(--crit)') + '"></i>' + r.fitCount + ' / ' + aufstellung + '</span>' },
-    { label: 'Gesamt', num: true, val: r => r.sqCount, html: r => r.sqCount == null ? '–' : '<b>' + r.sqCount + '</b> / ' + kaderMax }
+    { label: 'Gesamt', num: true, val: r => r.sqCount,
+      html: r => r.sqCount == null ? '–' : slotBar(r.sqCount, kaderMax) + '<b>' + r.sqCount + '</b> / ' + kaderMax }
   ], rows.map(r => Object.assign({ _id: r.i }, r)),
     { sort: 6, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
 
@@ -932,6 +906,22 @@ function vPreseason(v) {
         r._tage >= 3 ? '<span class="status-dot"><i style="background:var(--warn)"></i>vor ' + r._tage + ' Tg</span>' :
         '<span class="status-dot"><i style="background:var(--good)"></i>vor ' + r._tage + ' Tg</span>') }
   ], withAkt, { sort: 2, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
+
+  // Rekordtransfer je Manager - teuerster eigener Kauf, auch wenn noch keiner da ist
+  const rekordRows = rows.map(r => {
+    const eigene = alleKaeufe.filter(t => t.kaeuferId === r.i);
+    const top = eigene.length ? eigene.reduce((a, b) => (b.trp || 0) > (a.trp || 0) ? b : a) : null;
+    return Object.assign({ _id: r.i, _top: top }, r);
+  });
+  sortTable($('#pre-t8', v), [
+    { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
+    { label: 'Teuerster Kauf', val: r => r._top ? r._top.pn : '',
+      html: r => r._top ? playerCell(r._top.pn, r._top.pim) : '<span class="psub">–</span>' },
+    { label: 'Preis', num: true, val: r => r._top ? r._top.trp : null,
+      html: r => r._top ? '<b>' + eur(r._top.trp) + '</b>' : '<span class="psub">–</span>' },
+    { label: 'Datum', num: true, val: r => r._top ? new Date(r._top.dt).getTime() : null,
+      html: r => r._top ? dmy(r._top.dt) : '–' }
+  ], rekordRows, { sort: 2, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
 
   // Letzte Transfers in der Liga
   if (alleKaeufe.length) {
@@ -1048,8 +1038,8 @@ function vSquad(v) {
     { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurShort(p.mv) + '</b>' },
     { label: 'Heute', num: true, val: p => p.sdmvt, html: p => deltaHtml(p.sdmvt) },
     { label: 'Kaufpreis', num: true, val: p => p.prc, html: p => eurShort(p.prc) },
-    { label: 'Gewinn', num: true, val: p => (p.mv || 0) - (p.prc || 0),
-      html: p => deltaHtml((p.mv || 0) - (p.prc || 0)) },
+    { label: 'Gewinn', num: true, val: p => (p.mv || 0) - (p.prc || p.mv || 0),
+      html: p => deltaHtml((p.mv || 0) - (p.prc || p.mv || 0)) },
     { label: 'Punkte', num: true, val: p => p.p, html: p => num(p.p) },
     { label: 'Ø Punkte', num: true, val: p => p.ap, html: p => num(p.ap) },
     { label: 'Pkt/Mio', num: true, val: p => p.mv ? (p.ap || 0) / (p.mv / 1e6) : 0,
@@ -1058,8 +1048,8 @@ function vSquad(v) {
   sortTable($('#t-squad', v), cols, sq.map(p => Object.assign({ _id: p.i }, p)),
     { sort: 3, dir: -1, onRow: id => openPlayer(id) });
 
-  barChart($('#c-sq1', v), sq.slice().sort((a, b) => ((b.mv || 0) - (b.prc || 0)) - ((a.mv || 0) - (a.prc || 0))).slice(0, 10)
-    .map(p => { const d = (p.mv || 0) - (p.prc || 0);
+  barChart($('#c-sq1', v), sq.slice().sort((a, b) => ((b.mv || 0) - (b.prc || b.mv || 0)) - ((a.mv || 0) - (a.prc || a.mv || 0))).slice(0, 10)
+    .map(p => { const d = (p.mv || 0) - (p.prc || p.mv || 0);
       return { label: p.n, value: d, img: p.pim, color: d >= 0 ? 'var(--good)' : 'var(--crit)', onClick: () => openPlayer(p.i) }; }),
     { fmt: eurShort });
   barChart($('#c-sq2', v), sq.slice().filter(p => p.mv).sort((a, b) => (b.ap / b.mv) - (a.ap / a.mv)).slice(0, 10)
@@ -1074,19 +1064,23 @@ function vSquad(v) {
 /* ---------- 4) Transfermarkt ---------- */
 function vMarket(v) {
   const m = S.market, it = (m && m.it) || [];
+  // Eigene freie Kaderplätze selbst berechnen statt Kickbases "nps"-Feld zu
+  // vertrauen - das hat in der Praxis nicht zur tatsächlichen Kadergröße gepasst.
+  const kaderMax = (window.LIGA && window.LIGA.maxKader) || 16;
+  const meineSq = (S.squad && S.squad.it) || [];
+  const freiePlaetze = Math.max(0, kaderMax - meineSq.length);
   let head = '';
   if (m) {
     head = '<div class="grid g-stats" style="margin-bottom:16px">' +
-      statCard('Angebote', it.length, m.dt ? 'Wechsel ' + dmyhm(m.dt) : '') +
-      statCard('Freie Plätze', m.nps != null ? m.nps : '–', 'im Kader') +
+      statCard('Angebote', it.length, m.dt ? 'nächster Wechsel ' + dmyhm(m.dt) : '') +
+      statCard('Freie Plätze', freiePlaetze, 'von ' + kaderMax + ' im eigenen Kader') +
       statCard('Marktwerte aktualisiert', m.mvud ? ago(m.mvud) : '–', m.mvud ? dmyhm(m.mvud) : '') +
       statCard('Spieltag', m.day || S.curday, '') + '</div>';
   }
   if (!it.length) { v.innerHTML = head + card('Transfermarkt', '', '<div class="empty">Aktuell stehen keine Spieler auf dem Markt.</div>'); return; }
 
   v.innerHTML = head +
-    card('Aktuelle Angebote', 'Zeile anklicken für Marktwertverlauf', '<div id="t-mkt"></div>') +
-    card('Preis gegen Marktwert', 'Grün = unter Marktwert angeboten', '<div id="c-mkt1"></div>');
+    card('Aktuelle Angebote', 'Zeile anklicken für Marktwertverlauf', '<div id="t-mkt"></div>');
 
   const cols = [
     { label: 'Spieler', val: p => p.n || p.pn, html: p => playerCell((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.n || p.pn), p.pim, POSL[p.pos]) },
@@ -1103,171 +1097,32 @@ function vMarket(v) {
   ];
   sortTable($('#t-mkt', v), cols, it.map(p => Object.assign({ _id: p.i || p.pi }, p)),
     { sort: 3, dir: -1, onRow: id => openPlayer(id) });
-
-  barChart($('#c-mkt1', v), it.slice().sort((a, b) => ((a.prc || 0) - (a.mv || 0)) - ((b.prc || 0) - (b.mv || 0)))
-    .map(p => { const d = (p.prc || 0) - (p.mv || 0);
-      return { label: p.n || p.pn, value: d, img: p.pim, color: d <= 0 ? 'var(--good)' : 'var(--crit)', onClick: () => openPlayer(p.i || p.pi) }; }),
-    { fmt: eurShort });
 }
 
-/* ---------- 5) Mitspieler ---------- */
-function vManagers(v) {
-  const us = (S.ranking && S.ranking.us) || [];
-  if (!us.length) { v.innerHTML = card('Mitspieler', '', '<div class="empty">Keine Daten.</div>'); return; }
-
-  const rows = us.map(u => {
-    const d = (S.managers[u.i] || {}).dashboard || {};
-    const t = (S.managers[u.i] || {}).transfers || {};
-    const bud = budgetVon(u.i);
-    // Nur Transfers seit dem letzten Reset zählen, sonst passt die Zahl nicht
-    // zum "seit Ligastart"-Kontostand daneben (API liefert alle Saisons).
-    return Object.assign({ _id: u.i, _prft: d.prft, _mdw: d.mdw, _tr: seitReset(t.it || []).length,
-                            _sq: kaderGroesseVon(u.i), _bud: bud }, u);
-  });
-  const kaderMax = (window.LIGA && window.LIGA.maxKader) || 16;
-
-  v.innerHTML =
-    card('Alle Manager', 'Zeile anklicken für Kader und Transfers · ≈ = geschätzt', '<div id="t-mgr"></div>') +
-    '<div class="grid g-2">' +
-      card('Kontostand', 'Startbudget + Auflaufprämie ± Transfers · nur deine Zeile ist der echte Wert', '<div id="c-mgr0"></div>') +
-      card('Kadergröße', 'von ' + kaderMax + ' erlaubten Plätzen', '<div id="c-mgr4"></div>') +
-    '</div>' +
-    '<div class="grid g-2">' +
-      card('Teamwert', '', '<div id="c-mgr1"></div>') +
-      card('Transfergewinn', 'seit Saisonstart', '<div id="c-mgr2"></div>') +
-    '</div>' +
-    card('Punkte gegen Teamwert', 'Wer holt am meisten aus seinem Kader?', '<div id="c-mgr3"></div>');
-
-  const budHtml = u => {
-    if (!u._bud) return '<span class="skel" style="display:inline-block;width:56px;height:12px"></span>';
-    return '<b>' + eurShort(u._bud.wert) + '</b>' + (u._bud.echt ? '' : ' <span class="psub">≈</span>');
-  };
-  const cols = [
-    { label: '#', num: true, val: u => u.spl },
-    { label: 'Manager', val: u => u.n, html: u => playerCell(u.n, u.uim, u.adm ? 'Admin' : '') },
-    { label: 'Kontostand', num: true, val: u => u._bud && u._bud.wert, html: budHtml },
-    { label: 'Kader', num: true, val: u => u._sq,
-      html: u => u._sq == null ? '<span class="skel" style="display:inline-block;width:30px;height:12px"></span>' : '<b>' + u._sq + '</b> / ' + kaderMax },
-    { label: 'Punkte', num: true, val: u => spOf(u), html: u => '<b>' + num(spOf(u)) + '</b>' },
-    { label: 'Teamwert', num: true, val: u => tvOf(u), html: u => eurShort(tvOf(u)) },
-    { label: 'Gewinn', num: true, val: u => u._prft, html: u => u._prft == null ? '<span class="skel" style="display:inline-block;width:56px;height:12px"></span>' : deltaHtml(u._prft) },
-    { label: 'ST-Siege', num: true, val: u => u._mdw, html: u => u._mdw == null ? '–' : num(u._mdw) },
-    { label: 'Transfers', num: true, val: u => u._tr, html: u => num(u._tr) },
-    { label: 'Pkt/Mio TW', num: true, val: u => tvOf(u) ? spOf(u) / (tvOf(u) / 1e6) : 0,
-      html: u => tvOf(u) ? nf1.format(spOf(u) / (tvOf(u) / 1e6)) : '–' }
-  ];
-  sortTable($('#t-mgr', v), cols, rows, { sort: 2, dir: -1,
-    rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
-
-  const withBud = rows.filter(r => r._bud).sort((a, b) => b._bud.wert - a._bud.wert);
-  barChart($('#c-mgr0', v), withBud.map(u => ({
-    label: u.n, value: u._bud.wert, img: u.uim,
-    color: String(u.i) === String(S.meId) ? 'var(--s1)' : (u._bud.wert >= 0 ? 'var(--accent)' : 'var(--crit)'),
-    onClick: () => openManager(u.i) })), { fmt: eurShort });
-
-  const withSq = rows.filter(r => r._sq != null).sort((a, b) => b._sq - a._sq);
-  barChart($('#c-mgr4', v), withSq.map(u => ({
-    label: u.n, value: u._sq, img: u.uim,
-    color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s4)',
-    onClick: () => openManager(u.i) })), { fmt: v2 => v2 + ' Spieler', max: kaderMax });
-
-  barChart($('#c-mgr1', v), us.slice().sort((a, b) => tvOf(b) - tvOf(a)).map(u => ({
-    label: u.n, value: tvOf(u), img: u.uim, color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s3)',
-    onClick: () => openManager(u.i) })), { fmt: eurShort });
-
-  const withP = rows.filter(r => r._prft != null).sort((a, b) => b._prft - a._prft);
-  barChart($('#c-mgr2', v), withP.map(u => ({
-    label: u.n, value: u._prft, img: u.uim, color: u._prft >= 0 ? 'var(--good)' : 'var(--crit)',
-    onClick: () => openManager(u.i) })), { fmt: eurShort });
-
-  barChart($('#c-mgr3', v), us.slice().filter(u => tvOf(u)).sort((a, b) => (spOf(b) / tvOf(b)) - (spOf(a) / tvOf(a))).map(u => ({
-    label: u.n, value: spOf(u) / (tvOf(u) / 1e6), img: u.uim,
-    color: String(u.i) === String(S.meId) ? 'var(--s1)' : 'var(--s7)',
-    onClick: () => openManager(u.i) })), { fmt: x => nf1.format(x) + ' P/Mio' });
-}
-
-/* ---------- 6) Spieler-Analyse (alle Bundesligaspieler) ---------- */
-const pState = { pos: 0, q: '', onlyFit: false, sort: 'mv' };
-function vPlayers(v) {
-  const all = S.compPlayers && S.compPlayers.it ? S.compPlayers.it : null;
-  if (!all) {
-    v.innerHTML = card('Spieler-Analyse', '', '<div class="empty">Spielerdaten werden geladen …<div class="skel" style="height:12px;margin-top:14px"></div></div>');
-    return;
-  }
-  const owned = {};
-  Object.values(S.managers).forEach(m => ((m.squad && m.squad.it) || []).forEach(p => { owned[p.pi] = m.squad.unm; }));
-
-  let list = all.filter(p => {
-    if (pState.pos && p.pos !== pState.pos) return false;
-    if (pState.onlyFit && p.st) return false;
-    if (pState.q) {
-      const s = ((p.fn || '') + ' ' + (p.ln || p.n || '') + ' ' + (p.tn || '')).toLowerCase();
-      if (!s.includes(pState.q.toLowerCase())) return false;
-    }
-    return true;
-  });
-
-  const chips = '<div class="chips" style="margin-bottom:14px">' +
-    '<input class="search" id="pq" placeholder="Spieler oder Verein suchen …" value="' + esc(pState.q) + '">' +
-    [[0, 'Alle'], [1, 'Torwart'], [2, 'Abwehr'], [3, 'Mittelfeld'], [4, 'Angriff']]
-      .map(([k, l]) => '<button class="chip' + (pState.pos === k ? ' on' : '') + '" data-pos="' + k + '">' + l + '</button>').join('') +
-    '<button class="chip' + (pState.onlyFit ? ' on' : '') + '" id="pfit">Nur einsatzbereit</button>' +
-    '<span class="hint" style="color:var(--muted);font-size:12.5px">' + num(list.length) + ' Spieler</span></div>';
-
-  v.innerHTML = chips + card('Alle Spieler der Liga', 'Zeile anklicken für Marktwertverlauf', '<div id="t-pl"></div>') +
-    '<div class="grid g-2">' +
-      card('Teuerste Spieler', '', '<div id="c-pl1"></div>') +
-      card('Beste Punkte je Million', 'mind. 5 Mio Marktwert', '<div id="c-pl2"></div>') +
-    '</div>';
-
-  const cols = [
-    { label: '★', val: () => 0, html: p => watchStar(p.i) },
-    { label: 'Spieler', val: p => (p.ln || p.n), html: p => playerCell(((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.ln || p.n)), p.pim, p.tn) },
-    { label: 'Pos', val: p => p.pos, html: p => posPill(p.pos) },
-    { label: 'Status', val: p => p.st, html: p => statusPill(p.st) },
-    { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurShort(p.mv) + '</b>' },
-    { label: 'Heute', num: true, val: p => p.sdmvt, html: p => deltaHtml(p.sdmvt) },
-    { label: 'Punkte', num: true, val: p => p.tp != null ? p.tp : p.p, html: p => num(p.tp != null ? p.tp : p.p) },
-    { label: 'Ø Punkte', num: true, val: p => p.ap, html: p => num(p.ap) },
-    { label: 'Pkt/Mio', num: true, val: p => p.mv ? (p.ap || 0) / (p.mv / 1e6) : 0,
-      html: p => p.mv ? nf1.format((p.ap || 0) / (p.mv / 1e6)) : '–' },
-    { label: 'Besitzer', val: p => owned[p.i] || 'frei', html: p => owned[p.i] ? esc(owned[p.i]) : '<span style="color:var(--muted)">frei</span>' }
-  ];
-  sortTable($('#t-pl', v), cols, list.map(p => Object.assign({ _id: p.i }, p)),
-    { sort: 4, dir: -1, onRow: id => openPlayer(id) });
-  wireWatchStars($('#t-pl', v), () => vPlayers(v));
-
-  barChart($('#c-pl1', v), list.slice().sort((a, b) => b.mv - a.mv).slice(0, 10)
-    .map(p => ({ label: (p.ln || p.n), value: p.mv, img: p.pim, onClick: () => openPlayer(p.i) })), { fmt: eurShort });
-  barChart($('#c-pl2', v), list.filter(p => p.mv >= 5e6).sort((a, b) => (b.ap / b.mv) - (a.ap / a.mv)).slice(0, 10)
-    .map(p => ({ label: (p.ln || p.n), value: (p.ap || 0) / (p.mv / 1e6), img: p.pim, color: 'var(--s3)', onClick: () => openPlayer(p.i) })),
-    { fmt: x => nf1.format(x) + ' P/Mio' });
-
-  const q = $('#pq', v);
-  q.oninput = () => { pState.q = q.value; const pos = q.selectionStart; vPlayers(v); const n = $('#pq', v); n.focus(); n.setSelectionRange(pos, pos); };
-  v.querySelectorAll('[data-pos]').forEach(b => b.onclick = () => { pState.pos = +b.dataset.pos; vPlayers(v); });
-  $('#pfit', v).onclick = () => { pState.onlyFit = !pState.onlyFit; vPlayers(v); };
-}
-
-/* ---------- 7) Bundesliga ---------- */
+/* ---------- 6) Bundesliga ---------- */
 function vBuli(v) {
   const t = (S.compTable && S.compTable.it) || [];
   const md = (S.matchdays && S.matchdays.it) || [];
   let h = '';
-  if (t.length) {
-    h += card('Bundesliga-Tabelle', S.matchdays ? 'Spieltag ' + (S.matchdays.day || '') : '', '<div id="t-buli"></div>');
-  }
   if (md.length) {
     const cur = md.find(x => x.day === (S.matchdays.day || S.curday)) || md[md.length - 1];
     h += card('Spieltag ' + (cur.day || ''), '', '<div class="tbl-wrap"><table><tbody>' +
       (cur.it || []).map(g => {
+        // g.st: 1 = läuft gerade, 2 = beendet - Kickbase liefert (Stand jetzt)
+        // keine Torschützen über diesen Endpunkt, nur den Spielstand.
+        const live = g.st === 1;
         const done = g.st === 2 || (g.t1g + g.t2g) > 0;
-        return '<tr><td style="width:1%;white-space:nowrap;color:var(--muted);font-size:12px">' + dmyhm(g.dt) + '</td>' +
-          '<td class="num" style="width:34%">' + esc(g.t1sy || g.t1) + '</td>' +
-          '<td style="width:1%;text-align:center;font-weight:700;white-space:nowrap">' +
-            (done ? g.t1g + ' : ' + g.t2g : '–:–') + '</td>' +
-          '<td style="width:34%">' + esc(g.t2sy || g.t2) + '</td></tr>';
+        const mitte = live ? '<span class="pill" style="background:var(--crit);color:#fff;animation:pulse 1.5s infinite">LIVE ' + g.t1g + ':' + g.t2g + '</span>'
+                    : done ? g.t1g + ' : ' + g.t2g : dmyhm(g.dt).split(', ')[1] || dmyhm(g.dt);
+        return '<tr>' +
+          '<td style="width:44%">' + playerCell(g.t1sy || g.t1, g.t1im) + '</td>' +
+          '<td style="width:1%;text-align:center;font-weight:700;white-space:nowrap">' + mitte + '</td>' +
+          '<td style="width:44%;text-align:right">' + playerCell(g.t2sy || g.t2, g.t2im) + '</td>' +
+        '</tr>';
       }).join('') + '</tbody></table></div>');
+  }
+  if (t.length) {
+    h += card('Bundesliga-Tabelle', S.matchdays ? 'Spieltag ' + (S.matchdays.day || '') : '', '<div id="t-buli"></div>');
   }
   if (!h) h = card('Bundesliga', '', '<div class="empty">Keine Wettbewerbsdaten verfügbar.</div>');
   v.innerHTML = h;
@@ -1285,28 +1140,6 @@ function vBuli(v) {
     ];
     sortTable($('#t-buli', v), cols, t.map(r => Object.assign({ _id: r.tid }, r)), { sort: 0, dir: 1, maxHeight: false });
   }
-}
-
-/* ---------- 8) Aktivitäten ---------- */
-const FEED_T = { 3: 'Transfer', 12: 'Gebot', 15: 'Marktwert', 26: 'Aktivität', 14: 'Aufstellung', 22: 'Liga' };
-function vFeed(v) {
-  const af = (S.feed && S.feed.af) || [];
-  if (!af.length) { v.innerHTML = card('Aktivitäten', '', '<div class="empty">Keine Aktivitäten gefunden.</div>'); return; }
-  v.innerHTML = card('Letzte Aktivitäten', af.length + ' Einträge', '<div class="tbl-wrap"><table><tbody>' +
-    af.map(a => {
-      const d = a.data || {};
-      const who = d.byr || d.n || d.unm || '';
-      const what = d.pn || d.n || '';
-      let txt = '';
-      if (a.t === 3 || a.t === 12) txt = esc(who) + (d.slr ? ' ← ' + esc(d.slr) : '') + (d.trp ? ' · ' + eur(d.trp) : '');
-      else txt = esc(Object.keys(d).length ? (d.m || d.msg || who || '') : '');
-      return '<tr' + (d.pi ? ' class="clickable" data-p="' + esc(d.pi) + '"' : '') + '>' +
-        '<td style="width:1%"><span class="pill">' + esc(FEED_T[a.t] || ('Typ ' + a.t)) + '</span></td>' +
-        '<td>' + (what ? playerCell(what, d.pim) : '<span class="psub">–</span>') + '</td>' +
-        '<td>' + txt + '</td>' +
-        '<td class="num" style="color:var(--muted);font-size:12px">' + ago(a.dt) + '</td></tr>';
-    }).join('') + '</tbody></table></div>');
-  v.querySelectorAll('[data-p]').forEach(tr => tr.onclick = () => openPlayer(tr.dataset.p));
 }
 
 /* ============================================================
@@ -1371,15 +1204,17 @@ function vLiga(v) {
   // Battles
   h += card('Battle-Wertungen', L.battlePreis + ' € je Kategorie', '<div id="t-battle"></div>');
 
-  // Termine
+  // Termine - Status als farbiger Punkt statt reiner Ausgrauung, sonst wirkt
+  // die Liste bei vielen vergangenen Terminen schnell wie "kaputt".
   h += card('Termine der Saison ' + L.saison, '', '<div class="tbl-wrap"><table><tbody>' +
     L.termine.map(t => {
       const ms = new Date(t.d).getTime(), vorbei = ms < jetzt;
       const d = Math.abs(Math.ceil((ms - jetzt) / 86400000));
-      return '<tr' + (vorbei ? ' style="opacity:.5"' : '') + '>' +
+      return '<tr>' +
         '<td style="width:1%;white-space:nowrap"><b>' + dmy(t.d) + '</b></td>' +
         '<td>' + esc(t.t) + (t.i ? '<div class="psub">' + esc(t.i) + '</div>' : '') + '</td>' +
-        '<td class="num" style="color:var(--muted)">' + (vorbei ? 'vorbei' : 'in ' + d + ' Tagen') + '</td></tr>';
+        '<td class="num"><span class="status-dot"><i style="background:' + (vorbei ? 'var(--muted)' : 'var(--good)') + '"></i>' +
+          (vorbei ? 'vorbei' : 'in ' + d + ' Tagen') + '</span></td></tr>';
     }).join('') + '</tbody></table></div>');
 
   // Auktionsrechner
@@ -1444,164 +1279,6 @@ function vLiga(v) {
   };
   inp.oninput = rechne;
   rechne();
-}
-
-/* ---------- Reiter: Coppa Corona ---------- */
-function vCoppa(v) {
-  const L = window.LIGA, C = L && L.coppa;
-  if (!C) { v.innerHTML = card('Coppa Corona', '', '<div class="empty">Regeldatei nicht geladen.</div>'); return; }
-  const us = (S.ranking && S.ranking.us) || [];
-  const tabellen = window.coppaTabellen(us);
-
-  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
-    statCard('Teilnehmer', L.maxManager, '3 Gruppen à 4') +
-    statCard('Gruppenspieltage', C.gruppenSpieltage.length, 'BL ' + C.gruppenSpieltage.join(', ')) +
-    statCard('Siegprämie', '20 €', 'plus Trophäe') +
-    statCard('Finale', C.finale[0] + '. Spieltag', 'Bundesliga') +
-    '</div>';
-
-  if (!tabellen) {
-    h += card('Gruppen noch nicht ausgelost', '', '<div class="empty" style="text-align:left;max-width:620px;margin:0 auto">' +
-      '<p style="color:var(--ink);font-weight:600;margin-top:0">Sobald die Auslosung steht, rechnet diese Seite von allein.</p>' +
-      '<p>Kickbase kennt euren Pokal nicht – die Tabellen entstehen hier aus den Kickbase-Punkten der jeweiligen ' +
-      'Bundesligaspieltage. Dafür fehlt nur die Gruppeneinteilung.</p>' +
-      '<p class="psub">Trag sie in <code>liga.js</code> unter <code>coppa.gruppen</code> ein, ' +
-      'zum Beispiel: <code>{ A: ["433938","689145",…], B: […], C: […] }</code> – ' +
-      'die Manager-Nummern findest du im Reiter „Mitspieler“.</p></div>');
-  } else {
-    Object.keys(tabellen).forEach(g => {
-      const tab = tabellen[g];
-      h += card('Gruppo ' + g, 'Plätze 1 und 2 direkt in die K.-o.-Phase', '<div class="tbl-wrap"><table>' +
-        '<thead><tr><th>#</th><th>Manager</th><th class="num">Sp</th><th class="num">S</th><th class="num">U</th>' +
-        '<th class="num">N</th><th class="num">Punkte für</th><th class="num">Diff</th><th class="num">Pkt</th></tr></thead><tbody>' +
-        tab.map((r, i) => '<tr class="' + (String(r.id) === String(S.meId) ? 'me' : '') + (i < 2 ? '' : '') + '">' +
-          '<td><b>' + (i + 1) + '</b></td><td>' + playerCell(r.n, r.u && r.u.uim, i < 2 ? 'qualifiziert' : 'Lucky Loosers') + '</td>' +
-          '<td class="num">' + r.sp + '</td><td class="num">' + r.s + '</td><td class="num">' + r.u_ + '</td>' +
-          '<td class="num">' + r.n_ + '</td><td class="num">' + num(r.pf) + '</td>' +
-          '<td class="num">' + (r.pf - r.pa > 0 ? '+' : '') + num(r.pf - r.pa) + '</td>' +
-          '<td class="num"><b>' + r.p + '</b></td></tr>').join('') +
-        '</tbody></table></div>');
-    });
-  }
-
-  // Terminplan
-  h += card('Turnierverlauf', 'gekoppelt an die Bundesligaspieltage', '<div class="tbl-wrap"><table><tbody>' +
-    [['Gruppenphase', C.gruppenSpieltage.join('. · ') + '. Spieltag'],
-     ['Lucky Loosers', C.luckyLoosers.join('. · ') + '. Spieltag'],
-     ['Viertelfinale', C.viertelfinale.join('. + ') + '. Spieltag'],
-     ['Halbfinale', C.halbfinale.join('. + ') + '. Spieltag'],
-     ['Finale', C.finale[0] + '. Spieltag']
-    ].map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td class="num">' + esc(r[1]) + '</td></tr>').join('') +
-    '</tbody></table></div>');
-
-  h += card('Bisherige Sieger', C.historie.length + ' Editionen', '<div class="tbl-wrap"><table><tbody>' +
-    C.historie.map(x => '<tr><td>' + esc(x[0]) + '</td><td><b>🏆 ' + esc(x[1]) + '</b></td></tr>').join('') +
-    '</tbody></table></div>');
-
-  v.innerHTML = h;
-}
-
-/* ---------- 9) Archiv (vom Sammel-Roboter aufgebaute Historie) ---------- */
-function vArchive(v) {
-  const A = S.archive;
-
-  if (A === 'loading') { v.innerHTML = card('Archiv', '', '<div class="empty">Archiv wird geladen …</div>'); return; }
-  if (!A) {
-    v.innerHTML = card('Archiv – noch nicht eingerichtet', '', '<div class="empty" style="text-align:left;max-width:640px;margin:0 auto">' +
-      '<p style="color:var(--ink);font-weight:600;margin-top:0">Hier entsteht deine eigene Datenhistorie.</p>' +
-      '<p>Kickbase liefert Marktwerte und Punkte rückwirkend – die findest du bereits in den anderen Reitern. ' +
-      'Drei Dinge vergisst Kickbase aber täglich:</p>' +
-      '<ul style="line-height:1.9"><li>wer wann zu welchem Preis auf dem <b>Transfermarkt</b> stand</li>' +
-      '<li>wie sich <b>Teamwert und Platzierung</b> deiner Mitspieler stündlich entwickeln</li>' +
-      '<li>welcher <b>Spieler wem</b> an welchem Tag gehört hat</li></ul>' +
-      '<p>Der Sammel-Roboter läuft alle sechs Stunden bei GitHub und schreibt genau das mit. ' +
-      'Sobald er das erste Mal gelaufen ist, füllt sich diese Seite von allein.</p>' +
-      '<p style="color:var(--muted);font-size:12.5px">Gesucht wurde: <code>data/archive-' + esc(S.leagueId) + '.json</code></p>' +
-      '</div>');
-    return;
-  }
-
-  const M = A.meta || {};
-  const mgrs = Object.entries(A.managers || {});
-  const mkt = A.market || [];
-  const tsFmt = t => dmyhm(t * 1000);
-
-  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
-    statCard('Sammelt seit', M.firstRun ? dmy(M.firstRun) : '–', M.runs ? M.runs + ' Durchläufe' : '') +
-    statCard('Letzter Stand', M.lastRun ? ago(M.lastRun) : '–', M.lastRun ? dmyhm(M.lastRun) : '') +
-    statCard('Markt-Aufnahmen', num(mkt.length), 'gespeicherte Momentbilder') +
-    statCard('Beobachtete Spieler', num(Object.keys(A.players || {}).length), mgrs.length + ' Manager') +
-    '</div>';
-
-  h += card('Teamwert im Zeitverlauf', 'echte Messpunkte, nicht je Spieltag', '<div id="c-arc1"></div>');
-  h += card('Platzierung im Zeitverlauf', 'oben = vorne', '<div id="c-arc2"></div>');
-
-  // Transfermarkt-Auswertung
-  const seen = {};
-  mkt.forEach(s => (s.it || []).forEach(p => {
-    if (!p.pi) return;
-    const e = seen[p.pi] || (seen[p.pi] = { n: p.n, pi: p.pi, count: 0, prcSum: 0, mvSum: 0, ofc: 0, last: 0 });
-    e.count++; e.prcSum += (p.prc || 0); e.mvSum += (p.mv || 0); e.ofc += (p.ofc || 0);
-    e.last = Math.max(e.last, s.ts);
-  }));
-  const seenList = Object.values(seen);
-
-  if (seenList.length) {
-    h += '<div class="grid g-2">' +
-      card('Am häufigsten auf dem Markt', 'in ' + mkt.length + ' Aufnahmen', '<div id="c-arc3"></div>') +
-      card('Höchster Aufschlag auf den Marktwert', 'Durchschnitt je Spieler', '<div id="c-arc4"></div>') +
-      '</div>';
-    h += card('Alle beobachteten Marktangebote', num(seenList.length) + ' verschiedene Spieler', '<div id="t-arc"></div>');
-  } else {
-    h += card('Transfermarkt-Historie', '', '<div class="empty">Noch keine Marktdaten gesammelt. Nach dem ersten Lauf des Roboters erscheinen sie hier.</div>');
-  }
-
-  v.innerHTML = h;
-
-  // Zeitreihen zeichnen
-  const pick = mgrs.slice(0, 8);
-  const mk = (key) => pick.map(([uid, m], i) => {
-    const s = (m.series || {})[key];
-    if (!s || !s.t) return null;
-    return { name: m.n, color: sc(i),
-      points: s.t.map((t, k) => ({ x: t, y: s.v[k], label: tsFmt(t) })).filter(p => p.y != null) };
-  }).filter(s => s && s.points.length);
-
-  lineChart($('#c-arc1', v), mk('tv'), { fmtX: t => dmy(t * 1000), fmtY: eurShort, height: 260 });
-  const plS = mk('pl').map(s => ({ ...s, points: s.points.map(p => ({ ...p, y: -p.y })) }));
-  lineChart($('#c-arc2', v), plS, { fmtX: t => dmy(t * 1000), fmtY: y => Math.round(-y) + '.', height: 240 });
-
-  if (seenList.length) {
-    barChart($('#c-arc3', v), seenList.slice().sort((a, b) => b.count - a.count).slice(0, 10)
-      .map(e => ({ label: e.n, value: e.count, onClick: () => openPlayer(e.pi) })), { fmt: v2 => num(v2) + '×' });
-    barChart($('#c-arc4', v), seenList.filter(e => e.mvSum)
-      .map(e => ({ ...e, diff: (e.prcSum - e.mvSum) / e.count }))
-      .sort((a, b) => b.diff - a.diff).slice(0, 10)
-      .map(e => ({ label: e.n, value: e.diff, color: e.diff >= 0 ? 'var(--crit)' : 'var(--good)',
-                   onClick: () => openPlayer(e.pi) })), { fmt: eurShort });
-
-    sortTable($('#t-arc', v), [
-      { label: 'Spieler', val: e => e.n, html: e => '<span class="pname">' + esc(e.n) + '</span>' },
-      { label: 'Gesehen', num: true, val: e => e.count, html: e => num(e.count) + '×' },
-      { label: 'Ø Preis', num: true, val: e => e.prcSum / e.count, html: e => eurShort(e.prcSum / e.count) },
-      { label: 'Ø Marktwert', num: true, val: e => e.mvSum / e.count, html: e => eurShort(e.mvSum / e.count) },
-      { label: 'Ø Aufschlag', num: true, val: e => (e.prcSum - e.mvSum) / e.count,
-        html: e => deltaHtml((e.prcSum - e.mvSum) / e.count) },
-      { label: 'Gebote gesamt', num: true, val: e => e.ofc, html: e => num(e.ofc) },
-      { label: 'Zuletzt', num: true, val: e => e.last, html: e => ago(e.last * 1000) }
-    ], seenList.map(e => ({ ...e, _id: e.pi })), { sort: 1, dir: -1, onRow: id => openPlayer(id) });
-  }
-}
-
-/** Archiv laden - liegt neben der Seite, wird vom Roboter erzeugt */
-async function loadArchive() {
-  if (api.demo) { S.archive = window.KB_DEMO.archive; if (curTab === 'archive') renderAll(); return; }
-  S.archive = 'loading';
-  try {
-    const r = await fetch('data/archive-' + S.leagueId + '.json', { cache: 'no-cache' });
-    S.archive = r.ok ? await r.json() : null;
-  } catch (e) { S.archive = null; }
-  if (curTab === 'archive') renderAll();
 }
 
 /* ============================================================
@@ -1761,12 +1438,11 @@ async function loadLeague(force) {
     Promise.all([
       api.get('/v4/competitions/' + cpi + '/table', 6e5).then(r => { S.compTable = r; if (curTab === 'buli') renderAll(); }),
       api.get('/v4/competitions/' + cpi + '/matchdays', 6e5).then(r => { S.matchdays = r; if (curTab === 'buli') renderAll(); }),
-      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => { S.compPlayers = r; if (curTab === 'players' || curTab === 'preseason') renderAll(); })
+      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => { S.compPlayers = r; if (curTab === 'preseason') renderAll(); })
     ]).catch(() => {});
 
     const ids = ((ranking && ranking.us) || []).map(u => u.i);
-    pool(ids, loadManager, 4).then(() => { if (curTab === 'managers' || curTab === 'players' || curTab === 'preseason') renderAll(); });
-    loadArchive();
+    pool(ids, loadManager, 4).then(() => { if (curTab === 'preseason') renderAll(); });
 
   } catch (e) {
     if (e.code === 401) { logout('Sitzung abgelaufen – bitte neu anmelden.'); return; }
@@ -1783,8 +1459,7 @@ function loadDemo() {
     compTable: D.competition.table, matchdays: D.competition.matchdays,
     compPlayers: { it: D.players.map(p => ({ i: p.i, fn: p.fn, ln: p.ln, n: p.ln, tid: p.tid, tn: p.tn,
                      pos: p.pos, st: p.st, mv: p.mv, sdmvt: p.sdmvt, tp: p.tp, ap: p.ap, pim: p.pim })) },
-    managers: D.managerData, meId: D.meId, curday: D.curday, loadedAt: Date.now(),
-    archive: D.archive
+    managers: D.managerData, meId: D.meId, curday: D.curday, loadedAt: Date.now()
   });
   freshness();
   renderAll();
