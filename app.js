@@ -1201,7 +1201,7 @@ function vLiga(v) {
     statCard('Nächster Termin', naechster ? (tage <= 0 ? 'heute' : tage + ' Tg') : '–',
              naechster ? esc(naechster.t) : '') +
     statCard('Marktwert-Update', L.marktwertUpdate, 'täglich') +
-    </div>';
+    '</div>';
 
   h += '<div class="card-head"><h2>Regelwächter</h2><span class="hint">geprüft nach ' + esc(L.name) + '-Statut</span></div>' + ruleCards(befunde);
 
