@@ -93,7 +93,9 @@
     return {
       i: String(300 + idx), fn, ln, n: ln, tid: String(tid), tn: TEAMS[tid],
       pos, st, stl: [], mv, mvt: sdmvt > 0 ? 1 : (sdmvt < 0 ? 2 : 0),
-      sdmvt, tfhmvt: Math.round(sdmvt * 1.4), p: tp, ap, tp,
+      // sdmvt ist der mehrtägige Trend (größer), tfhmvt die echte 24h-Änderung
+      // (kleiner) - reales Verhältnis laut Kickbase-API-Beispieldaten.
+      sdmvt, tfhmvt: Math.round(sdmvt * 0.18), p: tp, ap, tp,
       g: pos === 4 ? ri(2, 14) : pos === 3 ? ri(0, 8) : ri(0, 2),
       a: pos >= 3 ? ri(1, 11) : ri(0, 3),
       y: ri(0, 6), r: ri(0, 1) === 1 && rnd() < 0.1 ? 1 : 0,
