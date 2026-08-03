@@ -518,7 +518,11 @@ function vHome(v) {
   const b = (S.budget && S.budget.b) != null ? S.budget.b : (S.me && S.me.b);
   const squad = (S.squad && S.squad.it) || [];
   const teamVal = me ? tvOf(me) : squad.reduce((s, p) => s + (p.mv || 0), 0);
-  const dayVal = squad.reduce((s, p) => s + (p.sdmvt || 0), 0);
+  // tfhmvt statt sdmvt: Kickbase liefert zwei Trendfelder je Spieler - sdmvt ist
+  // der größere, mehrtägige Trend ("7-Tage-Trend" in der offiziellen App),
+  // tfhmvt die tatsächliche 24-Stunden-Änderung. Verwechslung sorgt für stark
+  // überhöhte "heute"-Werte.
+  const dayVal = squad.reduce((s, p) => s + (p.tfhmvt || 0), 0);
   const myPts = spOf(me);
   const played = me && me.lp ? me.lp.filter(x => x != null).length : 0;
   const avg = played ? myPts / played : null;
@@ -542,7 +546,7 @@ function vHome(v) {
   }
 
   // Top-Bewegungen im eigenen Kader
-  const movers = squad.slice().sort((a, b) => (b.sdmvt || 0) - (a.sdmvt || 0));
+  const movers = squad.slice().sort((a, b) => (b.tfhmvt || 0) - (a.tfhmvt || 0));
   h += '<div class="grid g-2">' +
     card('Tagesgewinner im Kader', 'Marktwert heute', '<div id="c-home3"></div>') +
     card('Tagesverlierer im Kader', 'Marktwert heute', '<div id="c-home4"></div>') + '</div>';
@@ -556,11 +560,11 @@ function vHome(v) {
   }
 
   v.innerHTML = h;
-  barChart($('#c-home3', v), movers.filter(p => (p.sdmvt || 0) > 0).slice(0, 6).map(p => ({
-    label: p.n, value: p.sdmvt, img: p.pim, color: 'var(--good)', onClick: () => openPlayer(p.i)
+  barChart($('#c-home3', v), movers.filter(p => (p.tfhmvt || 0) > 0).slice(0, 6).map(p => ({
+    label: p.n, value: p.tfhmvt, img: p.pim, color: 'var(--good)', onClick: () => openPlayer(p.i)
   })), { fmt: eurShort });
-  barChart($('#c-home4', v), movers.filter(p => (p.sdmvt || 0) < 0).slice(-6).reverse().map(p => ({
-    label: p.n, value: p.sdmvt, img: p.pim, color: 'var(--crit)', onClick: () => openPlayer(p.i)
+  barChart($('#c-home4', v), movers.filter(p => (p.tfhmvt || 0) < 0).slice(-6).reverse().map(p => ({
+    label: p.n, value: p.tfhmvt, img: p.pim, color: 'var(--crit)', onClick: () => openPlayer(p.i)
   })), { fmt: eurShort });
 }
 
@@ -1013,7 +1017,7 @@ function vSquad(v) {
   if (!sq.length) { v.innerHTML = card('Mein Kader', '', '<div class="empty">Kein Kader gefunden.</div>'); return; }
   const tv = sq.reduce((s, p) => s + (p.mv || 0), 0);
   const pts = sq.reduce((s, p) => s + (p.p || 0), 0);
-  const day = sq.reduce((s, p) => s + (p.sdmvt || 0), 0);
+  const day = sq.reduce((s, p) => s + (p.tfhmvt || 0), 0);
   const gain = sq.reduce((s, p) => s + ((p.mv || 0) - (p.prc || p.mv || 0)), 0);
   const inj = sq.filter(p => p.st && p.st !== 0).length;
 
@@ -1036,7 +1040,7 @@ function vSquad(v) {
     { label: 'Pos', val: p => p.pos, html: p => posPill(p.pos) },
     { label: 'Status', val: p => p.st, html: p => statusPill(p.st) },
     { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurShort(p.mv) + '</b>' },
-    { label: 'Heute', num: true, val: p => p.sdmvt, html: p => deltaHtml(p.sdmvt) },
+    { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
     { label: 'Kaufpreis', num: true, val: p => p.prc, html: p => eurShort(p.prc) },
     { label: 'Gewinn', num: true, val: p => (p.mv || 0) - (p.prc || p.mv || 0),
       html: p => deltaHtml((p.mv || 0) - (p.prc || p.mv || 0)) },
@@ -1090,7 +1094,7 @@ function vMarket(v) {
     { label: 'Marktwert', num: true, val: p => p.mv, html: p => eurShort(p.mv) },
     { label: 'Aufschlag', num: true, val: p => (p.prc || 0) - (p.mv || 0),
       html: p => deltaHtml((p.prc || 0) - (p.mv || 0)) },
-    { label: 'Heute', num: true, val: p => p.sdmvt, html: p => deltaHtml(p.sdmvt) },
+    { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
     { label: 'Ø Punkte', num: true, val: p => p.ap, html: p => num(p.ap) },
     { label: 'Anbieter', val: p => (p.u && p.u.n) || 'Kickbase', html: p => esc((p.u && p.u.n) || 'Kickbase') },
     { label: 'Läuft ab', num: true, val: p => p.exs, html: p => countdown(p.exs) }
@@ -1197,7 +1201,7 @@ function vLiga(v) {
     statCard('Nächster Termin', naechster ? (tage <= 0 ? 'heute' : tage + ' Tg') : '–',
              naechster ? esc(naechster.t) : '') +
     statCard('Marktwert-Update', L.marktwertUpdate, 'täglich') +
-    '</div>';
+    </div>';
 
   h += '<div class="card-head"><h2>Regelwächter</h2><span class="hint">geprüft nach ' + esc(L.name) + '-Statut</span></div>' + ruleCards(befunde);
 
@@ -1325,7 +1329,7 @@ async function openPlayer(pid) {
       '<span style="flex:1"></span>' + posPill(d.pos) + '<button class="icon-btn mclose">✕</button></div>' +
     '<div class="modal-body">' +
       '<div class="grid g-stats" style="margin-bottom:16px">' +
-        statCard('Marktwert', eur(d.mv), deltaHtml(d.sdmvt) + ' heute') +
+        statCard('Marktwert', eur(d.mv), deltaHtml(d.tfhmvt) + ' heute') +
         statCard('Punkte', num(d.tp), 'Ø ' + num(d.ap) + ' je Spiel') +
         statCard('Tore / Vorlagen', (d.g || 0) + ' / ' + (d.a || 0), (d.sec ? Math.round(d.sec / 60) + ' Minuten' : '')) +
         statCard('Status', statusPill(d.st), (d.y || 0) + ' Gelbe · ' + (d.r || 0) + ' Rote') +
@@ -1390,7 +1394,7 @@ async function openManager(uid) {
     { label: 'Spieler', val: p => p.pn, html: p => playerCell(p.pn, p.pim, POSL[p.pos]) },
     { label: 'Pos', val: p => p.pos, html: p => posPill(p.pos) },
     { label: 'Marktwert', num: true, val: p => p.mv, html: p => eurShort(p.mv) },
-    { label: 'Heute', num: true, val: p => p.sdmvt, html: p => deltaHtml(p.sdmvt) },
+    { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
     { label: 'Punkte', num: true, val: p => p.p, html: p => num(p.p) },
     { label: 'Ø', num: true, val: p => p.ap, html: p => num(p.ap) }
   ], sq.map(p => Object.assign({ _id: p.pi }, p)), { sort: 2, dir: -1, onRow: id => openPlayer(id) });
@@ -1458,7 +1462,7 @@ function loadDemo() {
     market: D.league.market, overview: D.league.overview, feed: D.league.feed, myeleven: D.league.myeleven,
     compTable: D.competition.table, matchdays: D.competition.matchdays,
     compPlayers: { it: D.players.map(p => ({ i: p.i, fn: p.fn, ln: p.ln, n: p.ln, tid: p.tid, tn: p.tn,
-                     pos: p.pos, st: p.st, mv: p.mv, sdmvt: p.sdmvt, tp: p.tp, ap: p.ap, pim: p.pim })) },
+                     pos: p.pos, st: p.st, mv: p.mv, sdmvt: p.sdmvt, tfhmvt: p.tfhmvt, tp: p.tp, ap: p.ap, pim: p.pim })) },
     managers: D.managerData, meId: D.meId, curday: D.curday, loadedAt: Date.now()
   });
   freshness();
