@@ -33,12 +33,23 @@ function eurShort(v) {
   if (a >= 1e3) return s + Math.round(a / 1e3) + ' Tsd';
   return s + nf.format(a);
 }
+// Auf den Euro genau, ohne Mio/Tsd-Rundung - für Tabellen, in denen der
+// exakte Kontostand/Teamwert gefragt ist statt einer groben Einordnung.
+function eurExact(v) {
+  if (v == null || isNaN(v)) return '–';
+  const r = Math.round(v);
+  return nf.format(r === 0 ? 0 : r) + ' €';
+}
 const num = v => { if (v == null || isNaN(v)) return '–'; const r = Math.round(v); return nf.format(r === 0 ? 0 : r); };
 function dmy(d) { const x = new Date(d); return isNaN(x) ? '–' : x.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit' }); }
 function dmyhm(d) { const x = new Date(d); return isNaN(x) ? '–' : x.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); }
 function ago(d) {
   const s = (Date.now() - new Date(d)) / 1000;
   if (isNaN(s)) return '';
+  // Liegt der Zeitpunkt in der Zukunft, ist es kein "vor X" mehr - ohne
+  // diese Abfrage kam bei einem Zeitstempel in der Zukunft fälschlich
+  // "gerade eben" heraus (negative Sekundenzahl < 60).
+  if (s < 0) return 'in Kürze';
   if (s < 60) return 'gerade eben';
   if (s < 3600) return Math.floor(s / 60) + ' Min';
   if (s < 86400) return Math.floor(s / 3600) + ' Std';
@@ -673,31 +684,45 @@ function vPreseason(v) {
     }));
   });
 
-  // Wer besitzt wen: primär aus dem geladenen Kader, zusätzlich aus den
-  // Transferdaten ergänzt (neuester Kauf je Spieler gewinnt). Der Kader
-  // eines Managers ist nach einem frischen Kauf nicht immer schon nachgeladen -
-  // ohne diese Ergänzung tauchen gerade gekaufte Spieler fälschlich noch
-  // in "Freie Top-Spieler" auf.
-  const ownedByTransfer = {};
-  alleKaeufe.forEach(t => {
-    const bisher = ownedByTransfer[t.pi];
-    if (!bisher || new Date(t.dt) > new Date(bisher.dt)) ownedByTransfer[t.pi] = { n: t.kaeufer, dt: t.dt };
+  // Wer besitzt wen: alle Transferereignisse (Kauf UND Verkauf) je Spieler
+  // sammeln, nicht nur Käufe. Wertet man nur "Kauf"-Einträge aus, bleibt ein
+  // Spieler, der nach einem Kauf zurück an den Markt verkauft wurde, für immer
+  // fälschlich als "vergeben" markiert - das drückte "Freie Spieler" massiv
+  // zu niedrig. Zusätzlich weiterhin aus dem geladenen Kader ergänzt, falls
+  // ein frischer Kauf im Transferverlauf noch nicht sichtbar ist.
+  const alleTransferEreignisse = [];
+  rows.forEach(r => {
+    const tr = (S.managers[r.i] && S.managers[r.i].transfers && S.managers[r.i].transfers.it) || [];
+    seitReset(tr).forEach(t => alleTransferEreignisse.push({ pi: t.pi, dt: t.dt, tty: t.tty, manager: r.n }));
+  });
+  const letztesEreignis = {};
+  alleTransferEreignisse.forEach(e => {
+    const bisher = letztesEreignis[e.pi];
+    if (!bisher || new Date(e.dt) >= new Date(bisher.dt)) letztesEreignis[e.pi] = e;
   });
   const owned = {};
-  Object.entries(ownedByTransfer).forEach(([pi, o]) => { owned[pi] = o.n; });
+  Object.values(letztesEreignis).forEach(e => { if (e.tty === 1) owned[e.pi] = e.manager; });
   rows.forEach(r => (r.sq || []).forEach(p => { owned[p.pi || p.i] = r.n; }));
   const allPlayers = (S.compPlayers && S.compPlayers.it) || null;
   const frei = allPlayers ? allPlayers.filter(p => !owned[p.i]) : null;
 
-  const baustellen = rows.filter(r => r.sqCount != null && r.sqCount < kaderMax).length;
+  // "Baustelle" heißt: noch nicht mal aufstellungsfähig (< 11), nicht bloß
+  // unter der maximalen Kadergröße (16) - das wäre in der Vorsaison der
+  // Normalzustand für praktisch jeden.
+  const baustellen = rows.filter(r => r.sqCount != null && r.sqCount < aufstellung).length;
   const budWerte = rows.filter(r => r.bud).map(r => r.bud.wert);
-  const avgBud = budWerte.length ? budWerte.reduce((s, x) => s + x, 0) / budWerte.length : null;
+  // Klare Prozentzahl statt vager "geschätzt"-Durchschnitt: wie viel vom
+  // insgesamt verfügbaren Geld der Liga (Startbudget + Auflaufprämie je
+  // Manager) steckt noch auf den Konten und wurde nicht in Spieler investiert.
+  const gesamtVerfuegbar = rows.length * (startBudget() + auflaufpraemie(tageSeitReset()));
+  const summeKontostand = budWerte.reduce((s, x) => s + x, 0);
+  const pctUebrig = gesamtVerfuegbar > 0 && budWerte.length ? (summeKontostand / gesamtVerfuegbar) * 100 : null;
 
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
     statCard('Bundesliga-Start', tageBuli != null ? (tageBuli <= 0 ? 'heute' : 'in ' + tageBuli + ' Tg') : '–', buliStart ? dmy(buliStart.d) : '') +
-    statCard('Ø Kontostand Liga', avgBud != null ? eurShort(avgBud) : '…', 'geschätzt') +
+    statCard('Übriges Geld Liga', pctUebrig != null ? nf1.format(pctUebrig) + ' %' : '…', budWerte.length + ' von ' + rows.length + ' Kontoständen bekannt') +
     statCard('Freie Spieler', frei ? num(frei.length) : '…', 'noch unvergeben') +
-    statCard('Kader-Baustellen', baustellen, 'Manager unter ' + kaderMax + ' Spielern') +
+    statCard('Kader-Baustellen', baustellen, 'Manager unter ' + aufstellung + ' Spielern') +
     statCard('Auktionen', ns.aktiv ? 'Nachtruhe' : 'offen', ns.aktiv ? 'bis ' + ns.label : 'Nachtruhe ab ' + ns.label) +
     '</div>';
 
@@ -785,12 +810,12 @@ function vPreseason(v) {
   const vermCols = [
     { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
     { label: 'Kontostand', num: true, val: r => r.bud && r.bud.wert,
-      html: r => r.bud ? '<b>' + eurShort(r.bud.wert) + '</b>' + (r.bud.echt ? '' : ' <span class="psub">≈</span>')
+      html: r => r.bud ? '<b>' + eurExact(r.bud.wert) + '</b>' + (r.bud.echt ? '' : ' <span class="psub">≈</span>')
                        : '<span class="skel" style="display:inline-block;width:50px;height:12px"></span>' },
-    { label: 'Teamwert', num: true, val: r => r.tv, html: r => eurShort(r.tv) },
+    { label: 'Teamwert', num: true, val: r => r.tv, html: r => eurExact(r.tv) },
     { label: 'MW-Gewinn/Verlust', num: true, val: mvGewinnVon,
-      html: r => { const g = mvGewinnVon(r); return g == null ? '–' : deltaHtml(g); } },
-    { label: 'Gesamt', num: true, val: r => r.netto, html: r => r.netto != null ? '<b>' + eurShort(r.netto) + '</b>' : '–' }
+      html: r => { const g = mvGewinnVon(r); return g == null ? '–' : deltaHtml(g, eurExact); } },
+    { label: 'Gesamt', num: true, val: r => r.netto, html: r => r.netto != null ? '<b>' + eurExact(r.netto) + '</b>' : '–' }
   ];
   sortTable($('#pre-t1', v), vermCols, rows.map(r => Object.assign({ _id: r.i }, r)),
     { sort: 4, dir: -1, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
@@ -848,8 +873,11 @@ function vPreseason(v) {
         r._krit.length ? '<span class="status-dot"><i style="background:var(--crit)"></i>' + r._krit.length + ' kritisch</span>' :
         r._warn.length ? '<span class="status-dot"><i style="background:var(--warn)"></i>' + r._warn.length + ' Hinweis' + (r._warn.length > 1 ? 'e' : '') + '</span>' :
         '<span class="status-dot"><i style="background:var(--good)"></i>konform</span>' },
-    { label: 'Größtes Problem', val: r => ((r._krit[0] || r._warn[0] || {}).titel || ''),
-      html: r => { const b = r._krit[0] || r._warn[0]; return b ? esc(b.titel) : '<span class="psub">–</span>'; } }
+    { label: 'Probleme', val: r => ((r._krit[0] || r._warn[0] || {}).titel || ''),
+      html: r => {
+        const alle = [].concat(r._krit, r._warn);
+        return alle.length ? alle.map(b => esc(b.titel)).join('<br>') : '<span class="psub">–</span>';
+      } }
   ], rkRows, { sort: 1, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
 
   // Vereinsverteilung je Manager
@@ -1015,17 +1043,30 @@ function vTable(v) {
 function vSquad(v) {
   const sq = (S.squad && S.squad.it) || [];
   if (!sq.length) { v.innerHTML = card('Mein Kader', '', '<div class="empty">Kein Kader gefunden.</div>'); return; }
+
+  // Kaufpreis-Fallback: die Kader-Antwort liefert "prc" nicht immer zuverlässig.
+  // Fehlt er, aus der eigenen Transferhistorie nachschlagen (neuester Kauf je
+  // Spieler gewinnt) - sonst zeigt "Gewinn seit Kauf" fälschlich 0 €, obwohl
+  // der Kaufpreis eigentlich bekannt ist.
+  const eigeneTransfers = (S.managers[S.meId] && S.managers[S.meId].transfers && S.managers[S.meId].transfers.it) || [];
+  const kaufpreisAus = {};
+  eigeneTransfers.filter(t => t.tty === 1).forEach(t => {
+    const bisher = kaufpreisAus[t.pi];
+    if (!bisher || new Date(t.dt) > new Date(bisher.dt)) kaufpreisAus[t.pi] = { prc: t.trp, dt: t.dt };
+  });
+  const prcVon = p => p.prc != null ? p.prc : (kaufpreisAus[p.i] ? kaufpreisAus[p.i].prc : null);
+
   const tv = sq.reduce((s, p) => s + (p.mv || 0), 0);
   const pts = sq.reduce((s, p) => s + (p.p || 0), 0);
   const day = sq.reduce((s, p) => s + (p.tfhmvt || 0), 0);
-  const gain = sq.reduce((s, p) => s + ((p.mv || 0) - (p.prc || p.mv || 0)), 0);
+  const gain = sq.reduce((s, p) => s + ((p.mv || 0) - (prcVon(p) || p.mv || 0)), 0);
   const inj = sq.filter(p => p.st && p.st !== 0).length;
 
   v.innerHTML =
     '<div class="grid g-stats" style="margin-bottom:16px">' +
       statCard('Spieler', sq.length, inj ? inj + ' nicht einsatzbereit' : 'alle fit') +
       statCard('Kaderwert', eur(tv), deltaHtml(day) + ' heute') +
-      statCard('Gewinn seit Kauf', eur(gain), gain >= 0 ? 'im Plus' : 'im Minus') +
+      statCard('Gewinn seit Kauf', eur(gain), gain > 0 ? 'im Plus' : gain < 0 ? 'im Minus' : 'ausgeglichen') +
       statCard('Punkte gesamt', num(pts), sq.length ? 'Ø ' + num(pts / sq.length) + ' je Spieler' : '') +
     '</div>' +
     card('Kader', 'Zeile anklicken für Details', '<div id="t-squad"></div>') +
@@ -1041,9 +1082,9 @@ function vSquad(v) {
     { label: 'Status', val: p => p.st, html: p => statusPill(p.st) },
     { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurShort(p.mv) + '</b>' },
     { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
-    { label: 'Kaufpreis', num: true, val: p => p.prc, html: p => eurShort(p.prc) },
-    { label: 'Gewinn', num: true, val: p => (p.mv || 0) - (p.prc || p.mv || 0),
-      html: p => deltaHtml((p.mv || 0) - (p.prc || p.mv || 0)) },
+    { label: 'Kaufpreis', num: true, val: p => prcVon(p), html: p => eurShort(prcVon(p)) },
+    { label: 'Gewinn', num: true, val: p => (p.mv || 0) - (prcVon(p) || p.mv || 0),
+      html: p => deltaHtml((p.mv || 0) - (prcVon(p) || p.mv || 0)) },
     { label: 'Punkte', num: true, val: p => p.p, html: p => num(p.p) },
     { label: 'Ø Punkte', num: true, val: p => p.ap, html: p => num(p.ap) },
     { label: 'Pkt/Mio', num: true, val: p => p.mv ? (p.ap || 0) / (p.mv / 1e6) : 0,
@@ -1052,8 +1093,8 @@ function vSquad(v) {
   sortTable($('#t-squad', v), cols, sq.map(p => Object.assign({ _id: p.i }, p)),
     { sort: 3, dir: -1, onRow: id => openPlayer(id) });
 
-  barChart($('#c-sq1', v), sq.slice().sort((a, b) => ((b.mv || 0) - (b.prc || b.mv || 0)) - ((a.mv || 0) - (a.prc || a.mv || 0))).slice(0, 10)
-    .map(p => { const d = (p.mv || 0) - (p.prc || p.mv || 0);
+  barChart($('#c-sq1', v), sq.slice().sort((a, b) => ((b.mv || 0) - (prcVon(b) || b.mv || 0)) - ((a.mv || 0) - (prcVon(a) || a.mv || 0))).slice(0, 10)
+    .map(p => { const d = (p.mv || 0) - (prcVon(p) || p.mv || 0);
       return { label: p.n, value: d, img: p.pim, color: d >= 0 ? 'var(--good)' : 'var(--crit)', onClick: () => openPlayer(p.i) }; }),
     { fmt: eurShort });
   barChart($('#c-sq2', v), sq.slice().filter(p => p.mv).sort((a, b) => (b.ap / b.mv) - (a.ap / a.mv)).slice(0, 10)
@@ -1075,10 +1116,24 @@ function vMarket(v) {
   const freiePlaetze = Math.max(0, kaderMax - meineSq.length);
   let head = '';
   if (m) {
+    // "mvud" ist der nächste geplante Berechnungszeitpunkt (Kickbase
+    // aktualisiert Marktwerte einmal täglich, meist gegen 22 Uhr), nicht der
+    // letzte - ago() auf eine Zukunftszeit angewendet ergab sonst absurd
+    // "gerade eben". Liegt der Zeitpunkt noch vor uns, als Countdown zum
+    // nächsten Update zeigen statt als "aktualisiert vor X".
+    let mvStat;
+    if (m.mvud) {
+      const diffSec = (new Date(m.mvud).getTime() - Date.now()) / 1000;
+      mvStat = diffSec > 0
+        ? statCard('Nächstes Update', countdown(diffSec), dmyhm(m.mvud))
+        : statCard('Marktwerte aktualisiert', ago(m.mvud), dmyhm(m.mvud));
+    } else {
+      mvStat = statCard('Marktwerte aktualisiert', '–', '');
+    }
     head = '<div class="grid g-stats" style="margin-bottom:16px">' +
       statCard('Angebote', it.length, m.dt ? 'nächster Wechsel ' + dmyhm(m.dt) : '') +
       statCard('Freie Plätze', freiePlaetze, 'von ' + kaderMax + ' im eigenen Kader') +
-      statCard('Marktwerte aktualisiert', m.mvud ? ago(m.mvud) : '–', m.mvud ? dmyhm(m.mvud) : '') +
+      mvStat +
       statCard('Spieltag', m.day || S.curday, '') + '</div>';
   }
   if (!it.length) { v.innerHTML = head + card('Transfermarkt', '', '<div class="empty">Aktuell stehen keine Spieler auf dem Markt.</div>'); return; }
@@ -1100,7 +1155,7 @@ function vMarket(v) {
     { label: 'Läuft ab', num: true, val: p => p.exs, html: p => countdown(p.exs) }
   ];
   sortTable($('#t-mkt', v), cols, it.map(p => Object.assign({ _id: p.i || p.pi }, p)),
-    { sort: 3, dir: -1, onRow: id => openPlayer(id) });
+    { sort: 9, dir: 1, onRow: id => openPlayer(id) });
 }
 
 /* ---------- 6) Bundesliga ---------- */
@@ -1118,10 +1173,13 @@ function vBuli(v) {
         const done = g.st === 2 || (g.t1g + g.t2g) > 0;
         const mitte = live ? '<span class="pill" style="background:var(--crit);color:#fff;animation:pulse 1.5s infinite">LIVE ' + g.t1g + ':' + g.t2g + '</span>'
                     : done ? g.t1g + ' : ' + g.t2g : dmyhm(g.dt).split(', ')[1] || dmyhm(g.dt);
+        // .player-cell ist display:flex (Blockelement) - text-align auf der
+        // <td> allein zentriert es nicht, daher zusätzlich in einen
+        // justify-content:center-Wrapper packen.
         return '<tr>' +
-          '<td style="width:44%">' + playerCell(g.t1sy || g.t1, g.t1im) + '</td>' +
+          '<td style="width:44%"><span style="display:flex;justify-content:center">' + playerCell(g.t1sy || g.t1, g.t1im) + '</span></td>' +
           '<td style="width:1%;text-align:center;font-weight:700;white-space:nowrap">' + mitte + '</td>' +
-          '<td style="width:44%;text-align:right">' + playerCell(g.t2sy || g.t2, g.t2im) + '</td>' +
+          '<td style="width:44%"><span style="display:flex;justify-content:center">' + playerCell(g.t2sy || g.t2, g.t2im) + '</span></td>' +
         '</tr>';
       }).join('') + '</tbody></table></div>');
   }
@@ -1183,9 +1241,15 @@ function vLiga(v) {
   const L = window.LIGA;
   if (!L) { v.innerHTML = card('Regelwerk', '', '<div class="empty">Regeldatei nicht geladen.</div>'); return; }
   const sq = (S.squad && S.squad.it) || [];
-  const ti = teamInfo();
-  const befunde = window.ligaCheck(sq, ti.names, ti.ids);
-  const krit = befunde.filter(b => b.art === 'kritisch').length;
+  // Regelwächter prüft alle Manager der Liga, nicht nur den eigenen Kader -
+  // preseasonRows() liefert je Manager bereits fertig berechnete "findings".
+  const alleRows = preseasonRows();
+  const alleBefunde = alleRows.filter(r => r.findings && r.findings.length).map(r => ({
+    r,
+    krit: r.findings.filter(b => b.art === 'kritisch'),
+    warn: r.findings.filter(b => b.art !== 'kritisch')
+  }));
+  const kritGesamt = alleBefunde.reduce((s, x) => s + x.krit.length, 0);
 
   // Nächster Termin
   const jetzt = Date.now();
@@ -1194,8 +1258,8 @@ function vLiga(v) {
   const tage = naechster ? Math.ceil((naechster.ms - jetzt) / 86400000) : null;
 
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
-    statCard('Regelverstöße', krit ? String(krit) : '0',
-             krit ? 'Sanktion droht' : 'alles sauber') +
+    statCard('Regelverstöße', kritGesamt ? String(kritGesamt) : '0',
+             kritGesamt ? 'ligaweit, Sanktion droht' : 'ligaweit alles sauber') +
     statCard('Kadergröße', sq.length + ' / ' + L.maxKader,
              sq.filter(p => p.pos === 1).length + ' TW · ' + sq.filter(p => p.pos !== 1).length + ' Feld') +
     statCard('Nächster Termin', naechster ? (tage <= 0 ? 'heute' : tage + ' Tg') : '–',
@@ -1203,7 +1267,13 @@ function vLiga(v) {
     statCard('Marktwert-Update', L.marktwertUpdate, 'täglich') +
     '</div>';
 
-  h += '<div class="card-head"><h2>Regelwächter</h2><span class="hint">geprüft nach ' + esc(L.name) + '-Statut</span></div>' + ruleCards(befunde);
+  h += '<div class="card-head"><h2>Regelwächter</h2><span class="hint">geprüft nach ' + esc(L.name) + '-Statut · alle Manager</span></div>';
+  h += alleBefunde.length
+    ? alleBefunde.map(x =>
+        '<div class="card-head" style="margin-top:6px;margin-bottom:0"><h3 style="margin:0;font-size:14px">' + esc(x.r.n) + '</h3></div>' +
+        ruleCards([].concat(x.krit, x.warn))
+      ).join('')
+    : ruleCards([]);
 
   // Battles
   h += card('Battle-Wertungen', L.battlePreis + ' € je Kategorie', '<div id="t-battle"></div>');
@@ -1365,15 +1435,21 @@ async function openManager(uid) {
 
   const d = m.dashboard, sq = (m.squad && m.squad.it) || [], tr = (m.transfers && m.transfers.it) || [];
   const lp = d.ph || [];
+  // Kontostand (echt beim eigenen Account, sonst geschätzt) + Gesamtwert
+  // (Kontostand + Teamwert), beide auf den Euro genau.
+  const bud = budgetVon(uid);
+  const gesamt = bud ? bud.wert + d.tv : null;
   openModal(
     '<div class="modal-head">' + playerCell(d.unm, d.uim, 'Platz ' + d.pl) +
       '<span style="flex:1"></span><button class="icon-btn mclose">✕</button></div>' +
     '<div class="modal-body">' +
       '<div class="grid g-stats" style="margin-bottom:16px">' +
-        statCard('Platz', d.pl + '.', d.mdw != null ? d.mdw + ' Spieltagssiege' : '') +
+        statCard('Kontostand', bud ? eurExact(bud.wert) + (bud.echt ? '' : ' ≈') : '–', bud && !bud.echt ? 'geschätzt' : '') +
+        statCard('Teamwert', eurExact(d.tv), sq.length + ' Spieler') +
+        statCard('Gesamtwert', gesamt != null ? eurExact(gesamt) : '–', 'Kontostand + Teamwert') +
         statCard('Punkte', num(d.tp), 'Ø ' + num(d.ap)) +
-        statCard('Teamwert', eur(d.tv), sq.length + ' Spieler') +
         statCard('Transfergewinn', deltaHtml(d.prft, eurShort), tr.length + ' Transfers') +
+        statCard('Platz', d.pl + '.', d.mdw != null ? d.mdw + ' Spieltagssiege' : '') +
       '</div>' +
       (lp.length ? card('Punkte je Spieltag', '', '<div id="c-mpt"></div>') : '') +
       (sq.length ? card('Kader', num(sq.reduce((s, p) => s + (p.mv || 0), 0)) + ' € Gesamtwert', '<div id="t-msq"></div>') : '') +
@@ -1446,7 +1522,10 @@ async function loadLeague(force) {
     ]).catch(() => {});
 
     const ids = ((ranking && ranking.us) || []).map(u => u.i);
-    pool(ids, loadManager, 4).then(() => { if (curTab === 'preseason') renderAll(); });
+    // Auch "squad" (Kaufpreis-Fallback aus der eigenen Transferhistorie) und
+    // "liga" (Regelwächter jetzt ligaweit) brauchen die nachgeladenen
+    // Manager-Daten, nicht nur "preseason".
+    pool(ids, loadManager, 4).then(() => { if (curTab === 'preseason' || curTab === 'squad' || curTab === 'liga') renderAll(); });
 
   } catch (e) {
     if (e.code === 401) { logout('Sitzung abgelaufen – bitte neu anmelden.'); return; }
