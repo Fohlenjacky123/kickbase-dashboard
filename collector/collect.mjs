@@ -207,6 +207,7 @@ async function main() {
           pushSeries(P.series, 'mv', ts, p.mv ?? null);
           if (p.p != null) pushSeries(P.series, 'p', ts, p.p);
         }
+        pushSeries(P.series, 'st', ts, p.st ?? null);
         playerCount++;
       }
     });
@@ -237,6 +238,8 @@ async function main() {
       for (const p of snap.it) {
         if (!p.pi) continue;
         const P = A.players[p.pi] || (A.players[p.pi] = { n: p.n, tid: p.tid, pos: p.pos, series: {} });
+        if (p.pos != null) P.pos = p.pos;
+        if (p.tid != null) P.tid = p.tid;
         if (p.mv != null && !mvToday) pushSeries(P.series, 'mv', ts, p.mv);
       }
     }

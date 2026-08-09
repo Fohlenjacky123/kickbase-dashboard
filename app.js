@@ -7,7 +7,7 @@
 'use strict';
 
 const API = 'https://api.kickbase.com';
-const LS_TOKEN = 'kb_token', LS_THEME = 'kb_theme', LS_LEAGUE = 'kb_league';
+const LS_TOKEN = 'kb_token', LS_THEME = 'kb_theme', LS_LEAGUE = 'kb_league', LS_STATUS_LOG = 'kb_status_log';
 
 /* ---------- Kurzschreibweisen & Formatierung ---------- */
 const $  = (s, r) => (r || document).querySelector(s);
@@ -68,6 +68,7 @@ const POSL = { 1: 'Torwart', 2: 'Abwehr', 3: 'Mittelfeld', 4: 'Angriff' };
 const STATUS = {
   0:  ['Fit', 'var(--good)'],       1:  ['Verletzt', 'var(--crit)'],
   2:  ['Angeschlagen', 'var(--warn)'], 4: ['Aufbautraining', 'var(--serious)'],
+  5:  ['Nicht aktiv', 'var(--muted)'],
   8:  ['Gesperrt', 'var(--crit)'],  16: ['Gelb-gesperrt', 'var(--warn)'],
   32: ['Abwesend', 'var(--muted)'], 64: ['Nicht im Kader', 'var(--muted)'],
   128:['Unbekannt', 'var(--muted)']
@@ -483,6 +484,49 @@ function mvPunktSeitReset(dt) {
   const ms = dayToDate(dt).getTime();
   return !isNaN(ms) && ms >= r;
 }
+function loadStatusLog() {
+  try { return JSON.parse(localStorage.getItem(LS_STATUS_LOG) || '{}'); } catch (e) { return {}; }
+}
+function saveStatusLog(log) {
+  try { localStorage.setItem(LS_STATUS_LOG, JSON.stringify(log)); } catch (e) {}
+}
+function recordStatusSnapshot(players) {
+  if (!players || !players.length) return;
+  const log = loadStatusLog();
+  const now = Date.now();
+  players.forEach(p => {
+    const pid = playerIdOf(p);
+    if (!pid || p.st == null) return;
+    const row = log[pid] || (log[pid] = []);
+    const last = row[row.length - 1];
+    if (!last || last.st !== p.st) row.push({ ts: now, st: p.st });
+    else last.ts = now;
+    while (row.length > 16) row.shift();
+  });
+  saveStatusLog(log);
+}
+function statusTransitionInfo(pid, buyDate, currentSt) {
+  const buyMs = new Date(buyDate).getTime();
+  if (!pid || isNaN(buyMs) || currentSt == null) return null;
+  const row = loadStatusLog()[String(pid)] || [];
+  if (!row.length) return null;
+  let fitSeen = null, changed = null;
+  row.forEach(entry => {
+    if (entry.ts < buyMs) return;
+    if (entry.st === 0) fitSeen = entry;
+    if (fitSeen && entry.st === currentSt && entry.ts >= fitSeen.ts) changed = entry;
+  });
+  if (!fitSeen || !changed || changed.ts === fitSeen.ts) return null;
+  return { fitSeen, changed };
+}
+function isTrackedBundesligaPlayer(p, ti) {
+  if (!p) return false;
+  if (p.mv == null || !(p.mv > 0)) return false;
+  if (p.st === 5) return false;
+  const teamId = String(p.tid || '');
+  if (ti && ti.ids && ti.ids.length && teamId && ti.ids.indexOf(teamId) === -1) return false;
+  return true;
+}
 /* Kickbase liefert bei /managers/{id}/transfer die komplette Transferhistorie
    eines Managers über alle Saisons hinweg - nicht nur seit dem letzten Reset.
    Ohne diesen Filter fließen Käufe/Verkäufe aus Vorjahren mit in den "seit
@@ -623,14 +667,26 @@ function saleStateForPlayer(row, p, ti) {
     };
   }
   if (SALE_EXCEPTION_STATUS.has(p.st)) {
+    const proof = statusTransitionInfo(pid, buy.dt, p.st);
+    if (proof) {
+      return {
+        key: 'maybe',
+        tone: 'var(--warn)',
+        label: 'Nur mit Nachweis',
+        short: 'Statuswechsel dokumentiert',
+        canSellNow: false,
+        maybe: true,
+        detail: 'Dokumentiert: fit am ' + dmy(proof.fitSeen.ts) + ', Wechsel auf ' + statusOf(p.st)[0] + ' am ' + dmy(proof.changed.ts) + '.'
+      };
+    }
     return {
-      key: 'maybe',
-      tone: 'var(--warn)',
-      label: 'Nur mit Nachweis',
-      short: 'Fit → Statuswechsel prüfen',
+      key: 'blocked',
+      tone: 'var(--muted)',
+      label: 'Gesperrt',
+      short: 'kein dokumentierter Statuswechsel',
       canSellNow: false,
-      maybe: true,
-      detail: 'Vorzeitiger Verkauf nur erlaubt, wenn der Spieler beim Kauf fit war und danach auf diesen Status gewechselt ist.'
+      maybe: false,
+      detail: 'Ausnahme greift nur mit dokumentiertem Wechsel von fit auf ' + statusOf(p.st)[0] + ' nach dem Kauf. Dafür fehlen noch Belege.'
     };
   }
   return {
@@ -898,7 +954,7 @@ function vPreseason(v) {
   Object.values(letztesEreignis).forEach(e => { if (e.tty === 1) owned[e.pi] = e.manager; });
   rows.forEach(r => (r.sq || []).forEach(p => { owned[p.pi || p.i] = r.n; }));
   const allPlayers = (S.compPlayers && S.compPlayers.it) || null;
-  const frei = allPlayers ? allPlayers.filter(p => !owned[p.i]) : null;
+  const frei = allPlayers ? allPlayers.filter(p => !owned[p.i] && isTrackedBundesligaPlayer(p, ti)) : null;
 
   // "Baustelle" heißt: noch nicht mal aufstellungsfähig (< 11), nicht bloß
   // unter der maximalen Kadergröße (16) - das wäre in der Vorsaison der
@@ -1197,7 +1253,7 @@ function vAvailability(v) {
   const marketByPid = marketMapByPlayer();
   const ti = teamInfo();
   const sales = saleMatrix(rows);
-  const free = allPlayers.filter(p => !owned.ownerIds[String(p.i)]);
+  const free = allPlayers.filter(p => !owned.ownerIds[String(p.i)] && isTrackedBundesligaPlayer(p, ti));
   const besteFrei = free.length ? free.slice().sort((a, b) => (b.mv || 0) - (a.mv || 0))[0] : null;
 
   let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
@@ -1234,7 +1290,7 @@ function vAvailability(v) {
   const sellRows = rows.map(r => {
     const info = sales[String(r.i)];
     const chips = arr => arr.slice(0, 4).map(x =>
-      '<span class="pill" style="margin:0 6px 6px 0;border-color:' + x.state.tone + ';color:' + x.state.tone + '">' +
+      '<span class="pill" title="' + esc(x.state.detail) + '" style="margin:0 6px 6px 0;border-color:' + x.state.tone + ';color:' + x.state.tone + '">' +
       esc(playerNameOf(x.player)) + '</span>').join('') + (arr.length > 4 ? '<span class="psub">+' + (arr.length - 4) + ' weitere</span>' : '');
     return Object.assign({
       _id: r.i,
@@ -1857,7 +1913,11 @@ async function loadLeague(force) {
     Promise.all([
       api.get('/v4/competitions/' + cpi + '/table', 6e5).then(r => { S.compTable = r; if (curTab === 'buli' || curTab === 'availability' || curTab === 'liga') renderAll(); }),
       api.get('/v4/competitions/' + cpi + '/matchdays', 6e5).then(r => { S.matchdays = r; if (curTab === 'buli' || curTab === 'availability' || curTab === 'market') renderAll(); }),
-      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => { S.compPlayers = r; if (curTab === 'preseason' || curTab === 'availability') renderAll(); })
+      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => {
+        S.compPlayers = r;
+        recordStatusSnapshot((r && r.it) || []);
+        if (curTab === 'preseason' || curTab === 'availability') renderAll();
+      })
     ]).catch(() => {});
 
     const ids = ((ranking && ranking.us) || []).map(u => u.i);
@@ -1883,6 +1943,7 @@ function loadDemo() {
                      pos: p.pos, st: p.st, mv: p.mv, sdmvt: p.sdmvt, tfhmvt: p.tfhmvt, tp: p.tp, ap: p.ap, pim: p.pim })) },
     managers: D.managerData, meId: D.meId, curday: D.curday, loadedAt: Date.now()
   });
+  recordStatusSnapshot((S.compPlayers && S.compPlayers.it) || []);
   freshness();
   renderAll();
 }
