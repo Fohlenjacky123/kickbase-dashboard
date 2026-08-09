@@ -16,6 +16,8 @@ const API = 'https://api.kickbase.com';
 const OUT = 'data';
 const MARKET_KEEP_DAYS = 120;     // Markt-Snapshots so lange aufheben
 const MAX_POINTS = 3000;          // Sicherung gegen unbegrenztes Wachstum
+const RESET_MARKERS = ['reset', 'ligastart'];
+const LIGA_FILE = 'liga.js';
 
 const EMAIL = process.env.KICKBASE_EMAIL;
 const PASS  = process.env.KICKBASE_PASSWORD;
@@ -78,9 +80,48 @@ function pushSeries(obj, key, ts, value) {
   s.t.push(ts); s.v.push(value);
   if (s.t.length > MAX_POINTS) { s.t.splice(0, s.t.length - MAX_POINTS); s.v.splice(0, s.v.length - MAX_POINTS); }
 }
+function parseResetTs(meta) {
+  const termine = (meta && meta.termine) || [];
+  const hits = termine
+    .filter(t => RESET_MARKERS.some(m => String(t.t || '').toLowerCase().includes(m)))
+    .map(t => new Date(t.d).getTime())
+    .filter(ms => !isNaN(ms) && ms <= Date.now());
+  return hits.length ? Math.max(...hits) : null;
+}
+function trimSeriesSince(series, cutoffSec) {
+  if (!series || cutoffSec == null) return series;
+  Object.values(series).forEach(s => {
+    if (!s || !Array.isArray(s.t) || !Array.isArray(s.v)) return;
+    let idx = 0;
+    while (idx < s.t.length && s.t[idx] < cutoffSec) idx++;
+    if (idx > 0) {
+      s.t = s.t.slice(idx);
+      s.v = s.v.slice(idx);
+    }
+  });
+  return series;
+}
+async function resetTsFromLigaFile() {
+  try {
+    const txt = await readFile(LIGA_FILE, 'utf8');
+    const hits = [];
+    const rx = /d:\s*'([^']+)'[\s\S]{0,140}?t:\s*'([^']+)'/g;
+    let m;
+    while ((m = rx.exec(txt))) {
+      const label = String(m[2] || '').toLowerCase();
+      if (!RESET_MARKERS.some(x => label.includes(x))) continue;
+      const ms = new Date(m[1]).getTime();
+      if (!isNaN(ms) && ms <= Date.now()) hits.push(ms);
+    }
+    return hits.length ? Math.max(...hits) : null;
+  } catch {
+    return null;
+  }
+}
 
 async function main() {
   console.log('Kickbase-Archiv – Lauf gestartet', new Date().toISOString());
+  const ligaResetTsMs = await resetTsFromLigaFile();
 
   // --- Anmelden ---
   const login = await req('/v4/user/login', { method: 'POST', body: { em: EMAIL, pass: PASS, loy: false, rep: {} } });
@@ -112,6 +153,17 @@ async function main() {
       catch { console.warn('  Archiv unlesbar, wird neu angelegt.'); }
     }
     A.meta ||= {}; A.managers ||= {}; A.players ||= {}; A.market ||= []; A.daily ||= {};
+    const resetTsMs = ligaResetTsMs ?? parseResetTs(A.meta);
+    const resetTsSec = resetTsMs == null ? null : Math.floor(resetTsMs / 1000);
+    if (resetTsSec != null) {
+      A.market = A.market.filter(s => (s.ts || 0) >= resetTsSec);
+      Object.keys(A.daily).forEach(day => {
+        const keep = (A.daily[day] && A.daily[day].ts || 0) >= resetTsSec;
+        if (!keep) delete A.daily[day];
+      });
+      Object.values(A.managers).forEach(m => trimSeriesSince(m.series, resetTsSec));
+      Object.values(A.players).forEach(p => trimSeriesSince(p.series, resetTsSec));
+    }
 
     const L = '/v4/leagues/' + lid;
     const [ranking, market, me, budget] = await Promise.all([
@@ -203,6 +255,7 @@ async function main() {
     A.meta.leagueId = lid;
     A.meta.leagueName = lg.n;
     A.meta.competitionId = lg.cpi ?? me?.cpi ?? null;
+    A.meta.termine = A.meta.termine || [];
     A.meta.firstRun = A.meta.firstRun || now.toISOString();
     A.meta.lastRun = now.toISOString();
     A.meta.runs = (A.meta.runs || 0) + 1;

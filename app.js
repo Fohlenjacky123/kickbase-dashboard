@@ -75,6 +75,7 @@ const STATUS = {
 const statusOf = s => STATUS[s] || ['Status ' + s, 'var(--muted)'];
 const SERIES = ['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'];
 const sc = i => 'var(' + SERIES[i % 8] + ')';
+const SALE_EXCEPTION_STATUS = new Set([1, 2, 4, 8, 16, 64, 128]);
 
 function deltaHtml(v, fmt) {
   if (v == null || v === 0 || isNaN(v)) return '<span class="delta flat">–</span>';
@@ -396,6 +397,7 @@ function sortTable(host, cols, rows, opts) {
 const TABS = [
   ['home',      'Überblick'],
   ['preseason', 'Vorsaison'],
+  ['availability', 'SpielerverfÃ¼gbarkeit'],
   ['table',    'Liga-Tabelle'],
   ['squad',    'Mein Kader'],
   ['market',   'Transfermarkt'],
@@ -415,7 +417,7 @@ function renderTabs() {
 
 function renderAll() {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + curTab));
-  const fn = { home: vHome, preseason: vPreseason, table: vTable, squad: vSquad, market: vMarket,
+  const fn = { home: vHome, preseason: vPreseason, availability: vAvailability, table: vTable, squad: vSquad, market: vMarket,
                buli: vBuli, liga: vLiga }[curTab];
   if (fn) { try { fn($('#v-' + curTab)); } catch (e) { console.error(e); $('#v-' + curTab).innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
 }
@@ -469,6 +471,18 @@ function tageSeitReset() {
   const r = letzterReset();
   return r == null ? 0 : Math.max(0, Math.floor((Date.now() - r) / 86400000));
 }
+function datumSeitReset(d) {
+  const r = letzterReset();
+  if (r == null || !d) return true;
+  const ms = new Date(d).getTime();
+  return !isNaN(ms) && ms >= r;
+}
+function mvPunktSeitReset(dt) {
+  const r = letzterReset();
+  if (r == null || dt == null) return true;
+  const ms = dayToDate(dt).getTime();
+  return !isNaN(ms) && ms >= r;
+}
 /* Kickbase liefert bei /managers/{id}/transfer die komplette Transferhistorie
    eines Managers über alle Saisons hinweg - nicht nur seit dem letzten Reset.
    Ohne diesen Filter fließen Käufe/Verkäufe aus Vorjahren mit in den "seit
@@ -514,118 +528,184 @@ function kaderGroesseVon(uid) {
   return it ? it.length : null;
 }
 
-/* ---------- Spieltagszentrale: kompakte Startkachel im Überblick ---------- */
-function nextMatchdayKickoff() {
-  const days = (S.matchdays && S.matchdays.it) || [];
-  const now = Date.now(), future = [];
-  days.forEach(md => ((md && md.it) || []).forEach(match => {
-    const ts = new Date(match.dt).getTime();
-    if (!isNaN(ts) && ts > now) future.push({ ts, day: md.day || match.day });
+function playerIdOf(p) {
+  return String((p && (p.pi != null ? p.pi : (p.i != null ? p.i : (p.id != null ? p.id : '')))) || '');
+}
+function playerNameOf(p) {
+  return (p && (p.pn || p.n || ((p.fn ? p.fn + ' ' : '') + (p.ln || '')))) || 'Unbekannt';
+}
+function marketItems() {
+  return (S.market && S.market.it) || [];
+}
+function marketMapByPlayer() {
+  const out = {};
+  marketItems().forEach(p => {
+    const pid = playerIdOf(p);
+    if (pid) out[pid] = p;
+  });
+  return out;
+}
+function matchdayStarts() {
+  const md = (S.matchdays && S.matchdays.it) || [];
+  return md.map(d => {
+    const starts = (d.it || []).map(g => new Date(g.dt).getTime()).filter(ms => !isNaN(ms));
+    return starts.length ? { day: d.day, start: Math.min(...starts) } : null;
+  }).filter(Boolean).sort((a, b) => a.start - b.start);
+}
+function startedMatchdaysSince(ms) {
+  if (ms == null || isNaN(ms)) return 0;
+  return matchdayStarts().filter(d => d.start > ms && d.start <= Date.now()).length;
+}
+function currentWeekStart() {
+  const starts = matchdayStarts().filter(d => d.start <= Date.now());
+  return starts.length ? starts[starts.length - 1].start : letzterReset();
+}
+function transferInCurrentWeek(t) {
+  const ws = currentWeekStart();
+  if (ws == null || !t || !t.dt) return false;
+  const ms = new Date(t.dt).getTime();
+  return !isNaN(ms) && ms >= ws;
+}
+function lastBuyTransfer(uid, pid) {
+  const tr = (S.managers[uid] && S.managers[uid].transfers && S.managers[uid].transfers.it) || [];
+  const buys = seitReset(tr).filter(t => t.tty === 1 && String(t.pi) === String(pid))
+    .sort((a, b) => new Date(b.dt) - new Date(a.dt));
+  return buys[0] || null;
+}
+function ownershipSnapshot(rows) {
+  const byPlayer = {}, ownerIds = {}, ownerRows = {};
+  rows.forEach(r => (r.sq || []).forEach(p => {
+    const pid = playerIdOf(p);
+    if (!pid) return;
+    byPlayer[pid] = r.n;
+    ownerIds[pid] = String(r.i);
+    ownerRows[pid] = r;
   }));
-  future.sort((a, b) => a.ts - b.ts);
-  return future[0] || null;
+  return { byPlayer, ownerIds, ownerRows };
 }
-
-function untilKickoff(ts) {
-  if (!ts) return 'Termin wird geladen';
-  const total = Math.max(0, Math.floor((ts - Date.now()) / 1000));
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  return days ? 'noch ' + days + ' Tg · ' + hours + ' Std' : 'noch ' + hours + ' Std · ' + minutes + ' Min';
-}
-
-function matchdayCockpitCard(squad, budget) {
-  const L = window.LIGA || {};
-  const elf = S.myeleven || {};
-  const lineup = Array.isArray(elf.lp) ? elf.lp : [];
-  const needed = L.aufstellung || 11;
-  const lineupCount = elf.lpc != null ? elf.lpc : lineup.length;
-  const risks = lineup.filter(p => p.st != null && p.st !== 0).length;
-  const ti = teamInfo();
-  const findings = window.ligaCheck ? window.ligaCheck(squad, ti.names, ti.ids) : [];
-  const critical = findings.filter(f => f.art === 'kritisch');
-  const complete = lineupCount >= needed;
-  const budgetKnown = budget != null && !isNaN(budget);
-  const budgetOk = budgetKnown && budget >= 0;
-  const rulesOk = critical.length === 0;
-  const ready = complete && budgetOk && risks === 0 && rulesOk;
-  const next = nextMatchdayKickoff();
-
-  const metric = (label, value, sub, color, icon) =>
-    '<div style="min-width:0;padding:14px 16px;border:1px solid ' + color + ';border-radius:8px;background:color-mix(in srgb,' + color + ' 7%,var(--card))">' +
-      '<div class="lbl" style="display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">' +
-        '<span style="color:' + color + ';font-size:16px">' + icon + '</span>' + esc(label) + '</div>' +
-      '<div style="margin-top:5px;color:' + color + ';font-family:var(--mono);font-size:22px;font-weight:800">' + value + '</div>' +
-      '<div class="sub" style="margin-top:2px;color:var(--muted);font-size:11px">' + sub + '</div>' +
-    '</div>';
-
-  const check = (ok, label, unknown) => {
-    const color = unknown ? 'var(--muted)' : (ok ? 'var(--good)' : 'var(--warn)');
-    const icon = unknown ? '•' : (ok ? '✓' : '⚠');
-    return '<div style="display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--grid)">' +
-      '<span style="display:grid;place-items:center;width:20px;height:20px;border:1px solid ' + color + ';border-radius:50%;color:' + color + ';font-weight:800">' + icon + '</span>' +
-      '<span style="flex:1">' + esc(label) + '</span>' +
-    '</div>';
-  };
-
-  let actionTitle = 'Bereit für den Spieltag';
-  let actionText = 'Aufstellung, Budget und Ligaregeln sehen gut aus.';
-  let actionColor = 'var(--good)';
-  if (!complete) {
-    actionTitle = (needed - lineupCount) + ' Aufstellungsplatz' + (needed - lineupCount === 1 ? '' : 'e') + ' offen';
-    actionText = 'Vervollständige deine Startelf vor dem Anpfiff.';
-    actionColor = 'var(--warn)';
-  } else if (!budgetKnown) {
-    actionTitle = 'Budget wird geladen';
-    actionText = 'Der Kontostand konnte noch nicht geprüft werden.';
-    actionColor = 'var(--muted)';
-  } else if (!budgetOk) {
-    actionTitle = 'Kontostand ins Plus bringen';
-    actionText = 'Aktuell fehlen ' + eur(Math.abs(budget)) + ' für die Spieltagsfreigabe.';
-    actionColor = 'var(--crit)';
-  } else if (risks) {
-    actionTitle = (risks === 1 ? '1 Startelf-Risiko' : risks + ' Startelf-Risiken') + ' prüfen';
-    actionText = 'Mindestens ein aufgestellter Spieler ist nicht als fit markiert.';
-    actionColor = 'var(--warn)';
-  } else if (!rulesOk) {
-    actionTitle = critical.length + ' Regelverstoß' + (critical.length === 1 ? '' : 'e') + ' beheben';
-    actionText = 'Im Reiter „Regeln & Battles“ findest du die Details.';
-    actionColor = 'var(--crit)';
+function saleStateForPlayer(row, p, ti) {
+  const pid = playerIdOf(p);
+  const teamId = String(p.tid || '');
+  const neutral = teamId && ti.ids.length && ti.ids.indexOf(teamId) === -1;
+  if (neutral) {
+    return {
+      key: 'must',
+      tone: 'var(--crit)',
+      label: 'Muss raus',
+      short: 'Regel XVI',
+      canSellNow: true,
+      maybe: false,
+      detail: 'Neutraler Spieler – binnen 24 Stunden verkaufen.'
+    };
   }
-
-  return '<section class="card" id="home-matchday" aria-label="Spieltagszentrale" style="position:relative;overflow:hidden;margin-bottom:16px;border-color:color-mix(in srgb,var(--accent) 45%,var(--border))">' +
-    '<div style="position:absolute;inset:0 0 auto;height:3px;background:var(--accent)"></div>' +
-    '<div class="card-head" style="padding-top:5px">' +
-      '<h2 style="font-size:22px;font-style:italic">Spieltagszentrale</h2>' +
-      '<span class="hint">Spieltag ' + esc((next && next.day) || S.curday || '–') + ' · ' + esc(untilKickoff(next && next.ts)) + '</span>' +
-      '<span class="spacer"></span>' +
-      '<span style="color:' + (ready ? 'var(--good)' : 'var(--warn)') + ';font-family:var(--mono);font-size:11px;text-transform:uppercase">' +
-        (ready ? '● bereit' : '● prüfen') + '</span>' +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">' +
-      metric('Aufstellung', lineupCount + '/' + needed, complete ? 'vollständig' : (needed - lineupCount) + ' Plätze offen', complete ? 'var(--good)' : 'var(--warn)', '✓') +
-      metric('Budget', budgetKnown ? eur(budget) : '–', budgetOk ? 'im Plus' : (budgetKnown ? 'Punkte gefährdet' : 'wird geladen'), budgetOk ? 'var(--good)' : (budgetKnown ? 'var(--crit)' : 'var(--muted)'), '€') +
-      metric('Risiken', num(risks), risks ? 'Status prüfen' : 'keine in der Startelf', risks ? 'var(--warn)' : 'var(--good)', '⚠') +
-      metric('Kader', squad.length + '/' + (L.maxKader || 16), 'aktuelle Größe', squad.length > (L.maxKader || 16) ? 'var(--crit)' : 'var(--text)', '◉') +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">' +
-      '<div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
-        '<div class="lbl" style="margin-bottom:3px;text-transform:uppercase">Check vor Anpfiff</div>' +
-        check(complete, 'Aufstellung vollständig', false) +
-        check(budgetOk, budgetKnown ? 'Kontostand positiv' : 'Kontostand wird geladen', !budgetKnown) +
-        check(risks === 0, risks ? risks + ' Startelf-Risiken' : 'Keine Startelf-Risiken', false) +
-        check(rulesOk, rulesOk ? 'Vereins- und Kaderlimits eingehalten' :
-          (critical.length === 1 ? '1 kritischer Regelbefund' : critical.length + ' kritische Regelbefunde'), false) +
-      '</div>' +
-      '<div style="display:flex;flex-direction:column;justify-content:center;padding:16px;border:1px solid ' + actionColor + ';border-radius:8px;background:color-mix(in srgb,' + actionColor + ' 6%,var(--panel))">' +
-        '<div class="lbl" style="text-transform:uppercase">Nächste Aktion</div>' +
-        '<div style="margin:7px 0 5px;color:' + actionColor + ';font-size:18px;font-weight:800">' + esc(actionTitle) + '</div>' +
-        '<div style="color:var(--muted);font-size:12px;line-height:1.5">' + esc(actionText) + '</div>' +
-        '<button id="home-matchday-squad" type="button" style="align-self:flex-start;margin-top:13px;padding:8px 13px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:800">Kader prüfen →</button>' +
-      '</div>' +
-    '</div>' +
-  '</section>';
+  const buy = lastBuyTransfer(row.i, pid);
+  if (!buy) {
+    return {
+      key: 'free',
+      tone: 'var(--good)',
+      label: 'Verkaufbar',
+      short: 'kein Kauf seit Reset gefunden',
+      canSellNow: true,
+      maybe: false,
+      detail: 'Kein blockierender Kauf seit dem letzten Reset gefunden.'
+    };
+  }
+  const started = startedMatchdaysSince(new Date(buy.dt).getTime());
+  if (started >= 1) {
+    return {
+      key: 'free',
+      tone: 'var(--good)',
+      label: 'Verkaufbar',
+      short: started + ' Spieltag' + (started > 1 ? 'e' : '') + ' seit Kauf',
+      canSellNow: true,
+      maybe: false,
+      detail: 'Regel XIV erfüllt – Kauf am ' + dmy(buy.dt) + '.'
+    };
+  }
+  if (SALE_EXCEPTION_STATUS.has(p.st)) {
+    return {
+      key: 'maybe',
+      tone: 'var(--warn)',
+      label: 'Nur mit Nachweis',
+      short: 'Fit → Statuswechsel prüfen',
+      canSellNow: false,
+      maybe: true,
+      detail: 'Vorzeitiger Verkauf nur erlaubt, wenn der Spieler beim Kauf fit war und danach auf diesen Status gewechselt ist.'
+    };
+  }
+  return {
+    key: 'blocked',
+    tone: 'var(--muted)',
+    label: 'Gesperrt',
+    short: 'noch kein Spieltag seit Kauf',
+    canSellNow: false,
+    maybe: false,
+    detail: 'Regel XIV blockiert den Verkauf noch.'
+  };
+}
+function saleMatrix(rows) {
+  const ti = teamInfo();
+  const out = {};
+  rows.forEach(r => {
+    const info = { certain: [], maybe: [], blocked: [], certainValue: 0, maybeValue: 0, byTid: {}, byTidMaybe: {} };
+    (r.sq || []).forEach(p => {
+      const st = saleStateForPlayer(r, p, ti);
+      const mv = p.mv || 0;
+      if (st.canSellNow) {
+        info.certain.push({ player: p, state: st });
+        info.certainValue += mv;
+        const tid = String(p.tid || '');
+        info.byTid[tid] = (info.byTid[tid] || 0) + 1;
+      } else if (st.maybe) {
+        info.maybe.push({ player: p, state: st });
+        info.maybeValue += mv;
+        const tid = String(p.tid || '');
+        info.byTidMaybe[tid] = (info.byTidMaybe[tid] || 0) + 1;
+      } else {
+        info.blocked.push({ player: p, state: st });
+      }
+    });
+    out[String(r.i)] = info;
+  });
+  return out;
+}
+function exactMwSale(item) {
+  return item && item.u && item.mv != null && item.prc != null && Math.round(item.mv) === Math.round(item.prc);
+}
+function managerBoughtFromSellerThisWeek(row, sellerName) {
+  const tr = (S.managers[row.i] && S.managers[row.i].transfers && S.managers[row.i].transfers.it) || [];
+  return seitReset(tr).some(t => t.tty === 1 && transferInCurrentWeek(t) && String(t.othnm || '') === String(sellerName || ''));
+}
+function buyCheck(row, item, saleInfo) {
+  const L = window.LIGA || {};
+  const ti = teamInfo();
+  const price = item.prc || 0;
+  const teamId = String(item.tid || '');
+  const sq = row.sq || [];
+  const budget = row.bud ? row.bud.wert : null;
+  const squadSize = sq.length;
+  const clubCount = sq.filter(p => String(p.tid || '') === teamId).length;
+  const slotNow = squadSize < (L.maxKader || 16);
+  const clubNow = clubCount < (L.maxProVerein || 2);
+  const moneyNow = budget != null && budget >= price;
+  const moneyAfter = budget != null && budget + saleInfo.certainValue >= price;
+  const moneyMaybe = budget != null && budget + saleInfo.certainValue + saleInfo.maybeValue >= price;
+  const slotAfter = slotNow || saleInfo.certain.length > 0;
+  const slotMaybe = slotNow || saleInfo.certain.length + saleInfo.maybe.length > 0;
+  const clubAfter = clubNow || !!saleInfo.byTid[teamId];
+  const clubMaybe = clubNow || !!saleInfo.byTid[teamId] || !!saleInfo.byTidMaybe[teamId];
+  const seller = item.u || null;
+  if (seller && String(seller.i) === String(row.i)) return { state: 'no', reason: 'eigener Spieler' };
+  if (seller && exactMwSale(item)) return { state: 'no', reason: 'externer Verkauf (Regel X)' };
+  if (seller && managerBoughtFromSellerThisWeek(row, seller.n)) return { state: 'no', reason: 'Anti-Tausch diese Woche' };
+  if (ti.ids.length && teamId && ti.ids.indexOf(teamId) === -1) return { state: 'no', reason: 'neutraler Spieler' };
+  if (moneyNow && slotNow && clubNow) return { state: 'now', reason: 'sofort kaufbar' };
+  if (moneyAfter && slotAfter && clubAfter) return { state: 'sale', reason: 'nach erlaubtem Verkauf kaufbar' };
+  if (moneyMaybe && slotMaybe && clubMaybe) return { state: 'maybe', reason: 'nur mit Regel-XIV-Ausnahme' };
+  if (budget == null) return { state: 'unknown', reason: 'Budget fehlt' };
+  if (!slotNow && !slotAfter) return { state: 'no', reason: 'kein freier Kaderplatz' };
+  if (!clubNow && !clubAfter) return { state: 'no', reason: 'Vereinslimit erreicht' };
+  return { state: 'no', reason: 'zu wenig Geld' };
 }
 
 /* ---------- 1) Überblick ---------- */
@@ -652,8 +732,7 @@ function vHome(v) {
   const played = me && me.lp ? me.lp.filter(x => x != null).length : 0;
   const avg = played ? myPts / played : null;
 
-  let h = matchdayCockpitCard(squad, b) +
-    '<div class="grid g-stats" style="margin-bottom:16px">' +
+  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
     statCard('Mein Platz', me ? (me.spl + '.') : '–', us.length ? 'von ' + us.length + ' Managern' : '') +
     statCard('Gesamtpunkte', me ? num(myPts) : '–', avg ? 'Ø ' + num(avg) + ' je Spieltag' : 'Saison noch nicht gestartet') +
     statCard('Teamwert', eur(teamVal), deltaHtml(dayVal) + ' <span style="color:var(--muted)">heute</span>') +
@@ -686,10 +765,6 @@ function vHome(v) {
   }
 
   v.innerHTML = h;
-  const squadBtn = $('#home-matchday-squad', v);
-  if (squadBtn) squadBtn.onclick = () => {
-    curTab = 'squad'; location.hash = 'squad'; renderTabs(); renderAll();
-  };
   barChart($('#c-home3', v), movers.filter(p => (p.tfhmvt || 0) > 0).slice(0, 6).map(p => ({
     label: p.n, value: p.tfhmvt, img: p.pim, color: 'var(--good)', onClick: () => openPlayer(p.i)
   })), { fmt: eurShort });
@@ -1109,6 +1184,97 @@ function vPreseason(v) {
   }
 }
 
+/* ---------- 2) Spielerverfügbarkeit ---------- */
+function vAvailability(v) {
+  const rows = preseasonRows();
+  const allPlayers = (S.compPlayers && S.compPlayers.it) || null;
+  if (!rows.length || !allPlayers) {
+    v.innerHTML = card('SpielerverfÃ¼gbarkeit', '', '<div class="empty">Spieler- und Managerdaten werden noch geladen â€¦</div>');
+    return;
+  }
+
+  const owned = ownershipSnapshot(rows);
+  const marketByPid = marketMapByPlayer();
+  const ti = teamInfo();
+  const sales = saleMatrix(rows);
+  const free = allPlayers.filter(p => !owned.ownerIds[String(p.i)]);
+  const besteFrei = free.length ? free.slice().sort((a, b) => (b.mv || 0) - (a.mv || 0))[0] : null;
+
+  let h = '<div class="grid g-stats" style="margin-bottom:16px">' +
+    statCard('Freie Spieler', num(free.length), 'ohne Besitzer') +
+    statCard('Davon auf Markt', num(free.filter(p => !!marketByPid[String(p.i)]).length), 'direkt kaufbar sichtbar') +
+    statCard('Top-Marktwert frei', besteFrei ? eurShort(besteFrei.mv) : 'â€“', besteFrei ? esc(playerNameOf(besteFrei)) : '') +
+    statCard('Budgets bekannt', rows.filter(r => !!r.bud).length + ' / ' + rows.length, 'eigene Werte echt, fremde geschÃ¤tzt') +
+    '</div>';
+
+  h += '<div class="grid g-2">' +
+    card('Wer hat wie viel Geld?', 'inklusive sofort verkaufbarer Werte nach Regel XIV', '<div id="av-bud"></div>') +
+    card('Wer darf gerade verkaufen?', 'Regel XIV + Regel XVI · gelb = nur mit Nachweis', '<div id="av-sell"></div>') +
+    '</div>';
+
+  h += card('Alle freien Spieler nach Marktwert', 'grau = noch nicht auf dem Markt · Zeile anklicken fÃ¼r Details', '<div id="av-free"></div>');
+  v.innerHTML = h;
+
+  sortTable($('#av-bud', v), [
+    { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
+    { label: 'Kontostand', num: true, val: r => r.bud && r.bud.wert,
+      html: r => r.bud ? '<b>' + eurExact(r.bud.wert) + '</b>' + (r.bud.echt ? '' : ' <span class="psub">â‰ˆ</span>') : 'â€“' },
+    { label: 'Sofort frei', num: true, val: r => sales[String(r.i)].certainValue,
+      html: r => sales[String(r.i)].certain.length
+        ? '<span class="status-dot"><i style="background:var(--good)"></i>' + eurShort(sales[String(r.i)].certainValue) + '</span>'
+        : '<span class="psub">nichts</span>' },
+    { label: 'Mit Ausnahme', num: true, val: r => sales[String(r.i)].maybeValue,
+      html: r => sales[String(r.i)].maybe.length
+        ? '<span class="status-dot"><i style="background:var(--warn)"></i>' + eurShort(sales[String(r.i)].maybeValue) + '</span>'
+        : '<span class="psub">â€“</span>' },
+    { label: 'Kader', num: true, val: r => r.sqCount, html: r => r.sqCount == null ? 'â€“' : r.sqCount + ' Spieler' }
+  ], rows.map(r => Object.assign({ _id: r.i }, r)),
+    { sort: 1, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
+
+  const sellRows = rows.map(r => {
+    const info = sales[String(r.i)];
+    const chips = arr => arr.slice(0, 4).map(x =>
+      '<span class="pill" style="margin:0 6px 6px 0;border-color:' + x.state.tone + ';color:' + x.state.tone + '">' +
+      esc(playerNameOf(x.player)) + '</span>').join('') + (arr.length > 4 ? '<span class="psub">+' + (arr.length - 4) + ' weitere</span>' : '');
+    return Object.assign({
+      _id: r.i,
+      _sellCertain: info.certain.length,
+      _sellMaybe: info.maybe.length,
+      _sellBlocked: info.blocked.length,
+      _sellHtml: (info.certain.length ? '<div style="margin-bottom:6px"><b style="color:var(--good)">frei:</b> ' + chips(info.certain) + '</div>' : '') +
+                 (info.maybe.length ? '<div style="margin-bottom:6px"><b style="color:var(--warn)">nur mit Nachweis:</b> ' + chips(info.maybe) + '</div>' : '') +
+                 (info.blocked.length ? '<div><b style="color:var(--muted)">gesperrt:</b> ' + chips(info.blocked) + '</div>' : '')
+    }, r);
+  });
+  sortTable($('#av-sell', v), [
+    { label: 'Manager', val: r => r.n, html: r => playerCell(r.n, r.uim) },
+    { label: 'Frei', num: true, val: r => r._sellCertain,
+      html: r => r._sellCertain ? '<span class="status-dot"><i style="background:var(--good)"></i>' + r._sellCertain + '</span>' : '<span class="psub">0</span>' },
+    { label: 'Ausnahme', num: true, val: r => r._sellMaybe,
+      html: r => r._sellMaybe ? '<span class="status-dot"><i style="background:var(--warn)"></i>' + r._sellMaybe + '</span>' : '<span class="psub">0</span>' },
+    { label: 'Gesperrt', num: true, val: r => r._sellBlocked,
+      html: r => r._sellBlocked ? '<span class="status-dot"><i style="background:var(--muted)"></i>' + r._sellBlocked + '</span>' : '<span class="psub">0</span>' },
+    { label: 'Spieler', val: r => r._sellHtml, html: r => r._sellHtml || '<span class="psub">keine Daten</span>' }
+  ], sellRows, { sort: 1, dir: -1, maxHeight: false, rowClass: r => String(r.i) === String(S.meId) ? 'me' : '', onRow: id => openManager(id) });
+
+  const freeRows = free.map(p => {
+    const item = marketByPid[String(p.i)];
+    return Object.assign({ _id: p.i, _market: item }, p);
+  });
+  sortTable($('#av-free', v), [
+    { label: 'Spieler', val: p => (p.ln || p.n), html: p => playerCell(((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.ln || p.n)), p.pim, p.tn) },
+    { label: 'Pos', val: p => p.pos, html: p => posPill(p.pos) },
+    { label: 'Status', val: p => p.st, html: p => statusPill(p.st) },
+    { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurExact(p.mv) + '</b>' },
+    { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
+    { label: 'Schnitt', num: true, val: p => p.ap, html: p => num(p.ap) },
+    { label: 'Markt', num: true, val: p => p._market ? 1 : 0,
+      html: p => p._market
+        ? '<span class="status-dot"><i style="background:var(--good)"></i>auf dem Markt</span>'
+        : '<span class="status-dot"><i style="background:var(--muted)"></i>noch frei</span>' }
+  ], freeRows, { sort: 3, dir: -1, maxHeight: false, onRow: id => openPlayer(id) });
+}
+
 /* ---------- 2) Liga-Tabelle ---------- */
 function vTable(v) {
   const us = (S.ranking && S.ranking.us) || [];
@@ -1119,6 +1285,26 @@ function vTable(v) {
     card('Tabelle', S.ranking.sn ? 'Saison ' + S.ranking.sn + ' · Spieltag ' + (S.ranking.day || maxDay) : '', '<div id="t-rank"></div>') +
     card('Platzierungsverlauf', 'Platz 1 ist oben', '<div id="c-rankpos"></div>') +
     card('Punkte je Spieltag – alle Manager', '', '<div id="c-rankpts"></div>');
+
+  const buyerHtml = p => {
+    if (!rows.length) return '<span class="psub">Managerdaten werden geladen â€¦</span>';
+    const states = { now: [], sale: [], maybe: [] };
+    rows.forEach(r => {
+      const res = buyCheck(r, p, sales[String(r.i)] || { certain: [], maybe: [], certainValue: 0, maybeValue: 0, byTid: {}, byTidMaybe: {} });
+      if (res.state === 'now' || res.state === 'sale' || res.state === 'maybe') states[res.state].push(r.n);
+    });
+    const line = (label, arr, color) => arr.length
+      ? '<div style="margin-bottom:4px"><b style="color:' + color + '">' + label + ':</b> ' + arr.map(esc).join(', ') + '</div>'
+      : '';
+    const html = line('sofort', states.now, 'var(--good)') +
+                 line('nach Verkauf', states.sale, 'var(--accent)') +
+                 line('nur Ausnahme', states.maybe, 'var(--warn)');
+    return html || '<span class="psub">niemand</span>';
+  };
+  const ruleHtml = p => {
+    if (exactMwSale(p)) return '<span class="status-dot"><i style="background:var(--crit)"></i>nur Computer (Regel X)</span>';
+    return '<span class="status-dot"><i style="background:var(--good)"></i>' + esc((p.u && p.u.n) || 'Kickbase-Angebot') + '</span>';
+  };
 
   const cols = [
     { label: '#', num: true, val: u => u.spl, html: u => '<b>' + u.spl + '</b>' },
@@ -1228,6 +1414,8 @@ function vSquad(v) {
 /* ---------- 4) Transfermarkt ---------- */
 function vMarket(v) {
   const m = S.market, it = (m && m.it) || [];
+  const rows = preseasonRows();
+  const sales = saleMatrix(rows);
   // Eigene freie Kaderplätze selbst berechnen statt Kickbases "nps"-Feld zu
   // vertrauen - das hat in der Praxis nicht zur tatsächlichen Kadergröße gepasst.
   const kaderMax = (window.LIGA && window.LIGA.maxKader) || 16;
@@ -1270,11 +1458,41 @@ function vMarket(v) {
       html: p => deltaHtml((p.prc || 0) - (p.mv || 0)) },
     { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
     { label: 'Ø Punkte', num: true, val: p => p.ap, html: p => num(p.ap) },
-    { label: 'Anbieter', val: p => (p.u && p.u.n) || 'Kickbase', html: p => esc((p.u && p.u.n) || 'Kickbase') },
+    { label: 'Regel', val: p => (p.u && p.u.n) || 'Kickbase', html: p => ruleHtml(p) },
     { label: 'Läuft ab', num: true, val: p => p.exs, html: p => countdown(p.exs) }
   ];
   sortTable($('#t-mkt', v), cols, it.map(p => Object.assign({ _id: p.i || p.pi }, p)),
     { sort: 9, dir: 1, onRow: id => openPlayer(id) });
+
+  v.insertAdjacentHTML('beforeend', card('Käufer-Check', 'wer darf laut Regeln überhaupt noch kaufen?', '<div id="t-mkt-buyers"></div>'));
+  sortTable($('#t-mkt-buyers', v), [
+    { label: 'Spieler', val: p => p.n || p.pn, html: p => playerCell((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.n || p.pn), p.pim, POSL[p.pos]) },
+    { label: 'Regelstatus', val: p => ruleHtml(p), html: p => ruleHtml(p) },
+    { label: 'Sofort', val: p => buyerHtml(p), html: p => {
+      const ns = [];
+      rows.forEach(r => {
+        const res = buyCheck(r, p, sales[String(r.i)] || { certain: [], maybe: [], certainValue: 0, maybeValue: 0, byTid: {}, byTidMaybe: {} });
+        if (res.state === 'now') ns.push(r.n);
+      });
+      return ns.length ? ns.map(esc).join(', ') : '<span class="psub">niemand</span>';
+    } },
+    { label: 'Nach Verkauf', val: p => buyerHtml(p), html: p => {
+      const ns = [];
+      rows.forEach(r => {
+        const res = buyCheck(r, p, sales[String(r.i)] || { certain: [], maybe: [], certainValue: 0, maybeValue: 0, byTid: {}, byTidMaybe: {} });
+        if (res.state === 'sale') ns.push(r.n);
+      });
+      return ns.length ? ns.map(esc).join(', ') : '<span class="psub">–</span>';
+    } },
+    { label: 'Nur Ausnahme', val: p => buyerHtml(p), html: p => {
+      const ns = [];
+      rows.forEach(r => {
+        const res = buyCheck(r, p, sales[String(r.i)] || { certain: [], maybe: [], certainValue: 0, maybeValue: 0, byTid: {}, byTidMaybe: {} });
+        if (res.state === 'maybe') ns.push(r.n);
+      });
+      return ns.length ? ns.map(esc).join(', ') : '<span class="psub">–</span>';
+    } }
+  ], it.map(p => Object.assign({ _id: (p.i || p.pi) + '-buyers' }, p)), { sort: 0, dir: 1, onRow: id => openPlayer(String(id).replace('-buyers', '')) });
 }
 
 /* ---------- 6) Bundesliga ---------- */
@@ -1507,11 +1725,13 @@ async function openPlayer(pid) {
   if (!d) { openModal('<div class="modal-head"><b>Spieler</b><span style="flex:1"></span><button class="icon-btn mclose">✕</button></div><div class="modal-body"><div class="empty">Details konnten nicht geladen werden.</div></div>'); return; }
 
   const name = ((d.fn ? d.fn + ' ' : '') + (d.ln || d.n || ''));
-  const mvPoints = (mv && mv.it || []).map(p => ({ x: p.dt, y: p.mv, label: dmy(dayToDate(p.dt)) }));
+  const mvPoints = (mv && mv.it || []).filter(p => mvPunktSeitReset(p.dt))
+    .map(p => ({ x: p.dt, y: p.mv, label: dmy(dayToDate(p.dt)) }));
   const first = mvPoints.length ? mvPoints[0].y : null;
   const chg = first ? d.mv - first : null;
   const ph = (perf && perf.it && perf.it.length ? (perf.it[perf.it.length - 1].ph || []) : []);
   const ptPoints = ph.filter(x => x.p != null).map(x => ({ x: x.day, y: x.p, label: 'Spieltag ' + x.day }));
+  const thIt = ((th && th.it) || []).filter(t => datumSeitReset(t.dt));
 
   openModal(
     '<div class="modal-head">' + playerCell(name, d.pim, (d.tn || '') + (d.shn ? ' · Nr. ' + d.shn : '')) +
@@ -1530,8 +1750,8 @@ async function openPlayer(pid) {
         '</div><div class="psub" style="margin-top:10px">Externer Verkauf: mindestens <b>' + eur(d.mv) + '</b> (kein Underpay, Regel XII).</div>') : '') +
       card('Marktwertverlauf', mvPoints.length ? mvPoints.length + ' Tage' : '', '<div id="c-pmv"></div>') +
       (ptPoints.length ? card('Punkte je Spieltag', '', '<div id="c-ppt"></div>') : '') +
-      (th && th.it && th.it.length ? card('Transferhistorie', '', '<div class="tbl-wrap"><table><tbody>' +
-        th.it.slice(0, 20).map(t => '<tr><td style="color:var(--muted);font-size:12px;width:1%;white-space:nowrap">' + dmy(t.dt) + '</td>' +
+      (thIt.length ? card('Transferhistorie dieser Saison', '', '<div class="tbl-wrap"><table><tbody>' +
+        thIt.slice(0, 20).map(t => '<tr><td style="color:var(--muted);font-size:12px;width:1%;white-space:nowrap">' + dmy(t.dt) + '</td>' +
           '<td>' + esc(t.slr || '?') + ' → <b>' + esc(t.byr || '?') + '</b></td>' +
           '<td class="num">' + eur(t.trp) + '</td></tr>').join('') + '</tbody></table></div>') : '') +
     '</div>');
@@ -1552,7 +1772,7 @@ async function openManager(uid) {
   }
   if (!m || !m.dashboard) { openModal('<div class="modal-head"><b>Manager</b><span style="flex:1"></span><button class="icon-btn mclose">✕</button></div><div class="modal-body"><div class="empty">Daten nicht verfügbar.</div></div>'); return; }
 
-  const d = m.dashboard, sq = (m.squad && m.squad.it) || [], tr = (m.transfers && m.transfers.it) || [];
+  const d = m.dashboard, sq = (m.squad && m.squad.it) || [], tr = seitReset((m.transfers && m.transfers.it) || []);
   const lp = d.ph || [];
   // Kontostand (echt beim eigenen Account, sonst geschätzt) + Gesamtwert
   // (Kontostand + Teamwert), beide auf den Euro genau.
@@ -1635,16 +1855,16 @@ async function loadLeague(force) {
     const cpi = (S.league && S.league.cpi) || (me && me.cpi) || '1';
     S.competition = cpi;
     Promise.all([
-      api.get('/v4/competitions/' + cpi + '/table', 6e5).then(r => { S.compTable = r; if (curTab === 'buli') renderAll(); }),
-      api.get('/v4/competitions/' + cpi + '/matchdays', 6e5).then(r => { S.matchdays = r; if (curTab === 'buli' || curTab === 'home') renderAll(); }),
-      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => { S.compPlayers = r; if (curTab === 'preseason') renderAll(); })
+      api.get('/v4/competitions/' + cpi + '/table', 6e5).then(r => { S.compTable = r; if (curTab === 'buli' || curTab === 'availability' || curTab === 'liga') renderAll(); }),
+      api.get('/v4/competitions/' + cpi + '/matchdays', 6e5).then(r => { S.matchdays = r; if (curTab === 'buli' || curTab === 'availability' || curTab === 'market') renderAll(); }),
+      api.get('/v4/competitions/' + cpi + '/players', 6e5).then(r => { S.compPlayers = r; if (curTab === 'preseason' || curTab === 'availability') renderAll(); })
     ]).catch(() => {});
 
     const ids = ((ranking && ranking.us) || []).map(u => u.i);
     // Auch "squad" (Kaufpreis-Fallback aus der eigenen Transferhistorie) und
     // "liga" (Regelwächter jetzt ligaweit) brauchen die nachgeladenen
     // Manager-Daten, nicht nur "preseason".
-    pool(ids, loadManager, 4).then(() => { if (curTab === 'preseason' || curTab === 'squad' || curTab === 'liga') renderAll(); });
+    pool(ids, loadManager, 4).then(() => { if (curTab === 'preseason' || curTab === 'availability' || curTab === 'squad' || curTab === 'market' || curTab === 'liga') renderAll(); });
 
   } catch (e) {
     if (e.code === 401) { logout('Sitzung abgelaufen – bitte neu anmelden.'); return; }
