@@ -416,11 +416,67 @@ function renderTabs() {
   });
 }
 
+TABS.forEach(t => {
+  if (t[0] === 'home') t[1] = 'Überblick';
+  if (t[0] === 'availability') t[1] = 'Spielerverfügbarkeit';
+});
+
+function fixMojibakeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/Ãœ/g, 'Ü')
+    .replace(/Ã¼/g, 'ü')
+    .replace(/Ã¤/g, 'ä')
+    .replace(/Ã¶/g, 'ö')
+    .replace(/Ã„/g, 'Ä')
+    .replace(/Ã–/g, 'Ö')
+    .replace(/ÃŸ/g, 'ß')
+    .replace(/â€¦/g, '…')
+    .replace(/Ã¢â‚¬Â¦/g, '…')
+    .replace(/â€“/g, '–')
+    .replace(/Ã¢â‚¬â€œ/g, '–')
+    .replace(/Â·/g, '·')
+    .replace(/ÃƒÂ¼/g, 'ü')
+    .replace(/ÃƒÂ¤/g, 'ä')
+    .replace(/Ã¢â€°Ë†/g, '≈')
+    .replace(/â‚¬/g, '€')
+    .replace(/â†’/g, '→')
+    .replace(/â˜…/g, '★')
+    .replace(/â–²/g, '▲')
+    .replace(/â–¼/g, '▼');
+}
+
+function cleanVisibleText(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(n => {
+    const fixed = fixMojibakeText(n.nodeValue);
+    if (fixed !== n.nodeValue) n.nodeValue = fixed;
+  });
+}
+
+function repairAvailabilityView() {
+  if (curTab !== 'availability') return;
+  const cardHead = document.querySelector('#v-availability .card-head h2');
+  if (cardHead) cardHead.textContent = fixMojibakeText(cardHead.textContent);
+  const host = $('#av-free');
+  if (!host) return;
+  const hasRows = !!host.querySelector('tbody tr');
+  const hasEmpty = !!host.querySelector('.empty');
+  if (!hasRows && !hasEmpty) {
+    host.innerHTML = '<div class="empty">Aktuell keine sauber zuordenbaren freien Bundesliga-Spieler.</div>';
+  }
+}
+
 function renderAll() {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + curTab));
   const fn = { home: vHome, preseason: vPreseason, availability: vAvailability, table: vTable, squad: vSquad, market: vMarket,
                buli: vBuli, liga: vLiga }[curTab];
   if (fn) { try { fn($('#v-' + curTab)); } catch (e) { console.error(e); $('#v-' + curTab).innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
+  cleanVisibleText($('#v-' + curTab));
+  repairAvailabilityView();
+  cleanVisibleText($('#tabs'));
 }
 
 /* ---------- Mein Manager-Eintrag ---------- */
