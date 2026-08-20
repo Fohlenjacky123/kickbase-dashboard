@@ -945,6 +945,213 @@ tbody td:last-child {
   }
 }
 
+.scout-board {
+  display: grid;
+  gap: 10px;
+}
+
+.scout-head,
+.scout-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 2.2fr) 84px 72px 64px 64px minmax(140px, 1fr) 150px;
+  gap: 12px;
+  align-items: center;
+}
+
+.scout-head {
+  padding: 0 12px 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scout-body {
+  display: grid;
+  gap: 10px;
+}
+
+.scout-row {
+  width: 100%;
+  border: 1px solid rgba(136,169,222,.12);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(20,25,37,.92), rgba(13,17,26,.92));
+  box-shadow: var(--shadow);
+  padding: 12px;
+  text-align: left;
+  color: var(--ink);
+  transition: transform .14s ease, border-color .16s ease, background .16s ease;
+}
+
+.scout-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(82,229,177,.28);
+  background: linear-gradient(180deg, rgba(24,31,46,.96), rgba(16,21,31,.96));
+}
+
+.scout-team,
+.scout-pos,
+.scout-fit,
+.scout-trend,
+.scout-next,
+.scout-value {
+  display: flex;
+  align-items: center;
+}
+
+.scout-team,
+.scout-pos,
+.scout-fit,
+.scout-trend {
+  justify-content: center;
+}
+
+.team-tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  overflow: hidden;
+}
+
+.team-tile img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.team-fallback {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.fit-badge,
+.trend-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fit-icon,
+.trend-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.03);
+}
+
+.trend-badge.up {
+  background: var(--good);
+}
+
+.trend-badge.down {
+  background: var(--crit);
+}
+
+.trend-badge.flat {
+  background: rgba(255,255,255,.12);
+  color: var(--ink-2);
+}
+
+.next-games {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-game {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(12,18,28,.9);
+  border: 2px solid rgba(82,229,177,.9);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.04);
+  overflow: hidden;
+}
+
+.next-game img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.next-game span {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.scout-value {
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 3px;
+}
+
+.scout-value b {
+  font-family: var(--mono);
+  font-size: 25px;
+  line-height: 1;
+  letter-spacing: -.6px;
+}
+
+.scout-value small {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+
+@media (max-width: 1180px) {
+  .scout-head,
+  .scout-row {
+    grid-template-columns: minmax(220px, 2fr) 72px 62px 56px 56px minmax(116px, .9fr) 132px;
+    gap: 10px;
+  }
+
+  .scout-value b {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 860px) {
+  .scout-head {
+    display: none;
+  }
+
+  .scout-row {
+    grid-template-columns: minmax(0, 1fr) 64px 60px;
+    grid-template-areas:
+      "name team value"
+      "pos fit trend"
+      "next next next";
+    gap: 10px 12px;
+  }
+
+  .scout-name { grid-area: name; }
+  .scout-team { grid-area: team; }
+  .scout-value { grid-area: value; }
+  .scout-pos { grid-area: pos; justify-content: flex-start; }
+  .scout-fit { grid-area: fit; justify-content: flex-start; }
+  .scout-trend { grid-area: trend; justify-content: flex-start; }
+  .scout-next { grid-area: next; justify-content: flex-start; }
+}
+
 @media (max-width: 640px) {
   .topbar-in {
     padding: 12px 12px 8px;

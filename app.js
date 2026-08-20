@@ -695,6 +695,84 @@ function currentWeekStart() {
   const starts = matchdayStarts().filter(d => d.start <= Date.now());
   return starts.length ? starts[starts.length - 1].start : letzterReset();
 }
+function teamBadge(tid, fallbackName) {
+  const ti = teamInfo();
+  const id = String(tid || '');
+  const src = ti.imgs[id];
+  const name = fallbackName || ti.names[id] || '';
+  return '<span class="team-tile">' +
+    (src
+      ? '<img src="' + esc(cdnImg(src)) + '" alt="' + esc(name) + '" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
+      : '<span class="team-fallback">' + esc((name || '?').slice(0, 3).toUpperCase()) + '</span>') +
+  '</span>';
+}
+function fitBadge(st) {
+  const [label, color] = statusOf(st);
+  const good = !st || st === 0;
+  return '<span class="fit-badge" title="' + esc(label) + '">' +
+    '<span class="fit-icon" style="background:' + color + '">' + (good ? '✓' : '!') + '</span>' +
+  '</span>';
+}
+function trendBadge(p) {
+  const v = p && p.tfhmvt;
+  if (v == null || v === 0 || isNaN(v)) return '<span class="trend-badge flat">•</span>';
+  return '<span class="trend-badge ' + (v > 0 ? 'up' : 'down') + '">' + (v > 0 ? '▲' : '▼') + '</span>';
+}
+function nextOpponentsForTeam(tid, limit) {
+  const id = String(tid || '');
+  const ti = teamInfo();
+  const teamName = ti.names[id] || '';
+  if (!id) return [];
+  const games = ((S.matchdays && S.matchdays.it) || [])
+    .flatMap(d => (d.it || []).map(g => ({ ...g, _day: d.day })))
+    .filter(g => {
+      const ms = new Date(g.dt).getTime();
+      return !isNaN(ms) && ms >= Date.now() - 6 * 3600 * 1000;
+    })
+    .filter(g => String(g.t1id || g.t1i || g.t1tid || '') === id || String(g.t2id || g.t2i || g.t2tid || '') === id
+      || (teamName && (String(g.t1 || '') === teamName || String(g.t2 || '') === teamName || String(g.t1sy || '') === teamName || String(g.t2sy || '') === teamName)));
+  return games.slice(0, limit || 3).map(g => {
+    const isHome = String(g.t1id || g.t1tid || '') === id || (teamName && (String(g.t1 || '') === teamName || String(g.t1sy || '') === teamName));
+    const oppName = isHome ? (g.t2sy || g.t2) : (g.t1sy || g.t1);
+    const oppImg = isHome ? g.t2im : g.t1im;
+    return { name: oppName || '?', img: oppImg, home: isHome };
+  });
+}
+function nextGamesHtml(tid) {
+  const list = nextOpponentsForTeam(tid, 3);
+  if (!list.length) return '<span class="psub">keine Termine</span>';
+  return '<div class="next-games">' + list.map(g =>
+    '<span class="next-game" title="' + esc((g.home ? 'vs ' : '@ ') + g.name) + '">' +
+      (g.img
+        ? '<img src="' + esc(cdnImg(g.img)) + '" alt="' + esc(g.name) + '" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
+        : '<span>' + esc((g.name || '?').slice(0, 2).toUpperCase()) + '</span>') +
+    '</span>').join('') + '</div>';
+}
+function playerDisplayName(p) {
+  return ((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.ln || p.n || p.pn || '')).trim() || playerNameOf(p);
+}
+function renderScoutBoard(host, rows, opts) {
+  const o = Object.assign({ empty: 'Keine Daten vorhanden.', rightLabel: 'MW', rightValue: p => eurExact(p.mv), rightSub: () => '', chip: () => '', trendLabel: 'Trend' }, opts || {});
+  if (!rows || !rows.length) {
+    host.innerHTML = '<div class="empty">' + esc(o.empty) + '</div>';
+    return;
+  }
+  const head = '<div class="scout-head">' +
+    '<span>Name</span><span>Team</span><span>Pos</span><span>Fit</span><span>' + esc(o.trendLabel) + '</span><span>Nächste Spiele</span><span>' + esc(o.rightLabel) + '</span>' +
+  '</div>';
+  const body = rows.map(p =>
+    '<button class="scout-row" data-id="' + esc(p._id == null ? '' : p._id) + '">' +
+      '<span class="scout-name">' + playerCell(playerDisplayName(p), p.pim, o.chip(p)) + '</span>' +
+      '<span class="scout-team">' + teamBadge(p.tid, p.tn) + '</span>' +
+      '<span class="scout-pos">' + posPill(p.pos) + '</span>' +
+      '<span class="scout-fit">' + fitBadge(p.st) + '</span>' +
+      '<span class="scout-trend">' + trendBadge(p) + '</span>' +
+      '<span class="scout-next">' + nextGamesHtml(p.tid) + '</span>' +
+      '<span class="scout-value"><b>' + o.rightValue(p) + '</b>' + (o.rightSub(p) ? '<small>' + o.rightSub(p) + '</small>' : '') + '</span>' +
+    '</button>').join('');
+  host.innerHTML = '<div class="scout-board">' + head + '<div class="scout-body">' + body + '</div></div>';
+  if (o.onRow) host.querySelectorAll('.scout-row').forEach(r => r.onclick = () => o.onRow(r.dataset.id));
+}
 function transferInCurrentWeek(t) {
   const ws = currentWeekStart();
   if (ws == null || !t || !t.dt) return false;
@@ -1408,18 +1486,14 @@ function vAvailability(v) {
     const item = marketByPid[String(p.i)];
     return Object.assign({ _id: p.i, _market: item }, p);
   });
-  sortTable($('#av-free', v), [
-    { label: 'Spieler', val: p => (p.ln || p.n), html: p => playerCell(((p.fn ? p.fn.charAt(0) + '. ' : '') + (p.ln || p.n)), p.pim, p.tn) },
-    { label: 'Pos', val: p => p.pos, html: p => posPill(p.pos) },
-    { label: 'Status', val: p => p.st, html: p => statusPill(p.st) },
-    { label: 'Marktwert', num: true, val: p => p.mv, html: p => '<b>' + eurExact(p.mv) + '</b>' },
-    { label: 'Heute', num: true, val: p => p.tfhmvt, html: p => deltaHtml(p.tfhmvt) },
-    { label: 'Schnitt', num: true, val: p => p.ap, html: p => num(p.ap) },
-    { label: 'Markt', num: true, val: p => p._market ? 1 : 0,
-      html: p => p._market
-        ? '<span class="status-dot"><i style="background:var(--good)"></i>auf dem Markt</span>'
-        : '<span class="status-dot"><i style="background:var(--muted)"></i>noch frei</span>' }
-  ], freeRows, { sort: 3, dir: -1, maxHeight: false, onRow: id => openPlayer(id) });
+  renderScoutBoard($('#av-free', v), freeRows.slice().sort((a, b) => (b.mv || 0) - (a.mv || 0)), {
+    rightLabel: 'MW',
+    rightValue: p => eurExact(p.mv),
+    rightSub: p => p._market ? 'auf dem Markt' : 'noch frei',
+    chip: p => p.tn || '',
+    trendLabel: 'Trend',
+    onRow: id => openPlayer(id)
+  });
 }
 
 /* ---------- 2) Liga-Tabelle ---------- */
@@ -1542,8 +1616,14 @@ function vSquad(v) {
     { label: 'Pkt/Mio', num: true, val: p => p.mv ? (p.ap || 0) / (p.mv / 1e6) : 0,
       html: p => p.mv ? nf1.format((p.ap || 0) / (p.mv / 1e6)) : '–' }
   ];
-  sortTable($('#t-squad', v), cols, sq.map(p => Object.assign({ _id: p.i }, p)),
-    { sort: 3, dir: -1, onRow: id => openPlayer(id) });
+  renderScoutBoard($('#t-squad', v), sq.map(p => Object.assign({ _id: p.i }, p)).slice().sort((a, b) => (b.mv || 0) - (a.mv || 0)), {
+    rightLabel: 'MW',
+    rightValue: p => eurExact(p.mv),
+    rightSub: p => 'Kauf ' + eurShort(prcVon(p)),
+    chip: p => POSL[p.pos] || '',
+    trendLabel: 'Trend',
+    onRow: id => openPlayer(id)
+  });
 
   barChart($('#c-sq1', v), sq.slice().sort((a, b) => ((b.mv || 0) - (prcVon(b) || b.mv || 0)) - ((a.mv || 0) - (prcVon(a) || a.mv || 0))).slice(0, 10)
     .map(p => { const d = (p.mv || 0) - (prcVon(p) || p.mv || 0);
@@ -1608,8 +1688,14 @@ function vMarket(v) {
     { label: 'Regel', val: p => (p.u && p.u.n) || 'Kickbase', html: p => ruleHtml(p) },
     { label: 'Läuft ab', num: true, val: p => p.exs, html: p => countdown(p.exs) }
   ];
-  sortTable($('#t-mkt', v), cols, it.map(p => Object.assign({ _id: p.i || p.pi }, p)),
-    { sort: 9, dir: 1, onRow: id => openPlayer(id) });
+  renderScoutBoard($('#t-mkt', v), it.map(p => Object.assign({ _id: p.i || p.pi }, p)).slice().sort((a, b) => (b.prc || 0) - (a.prc || 0)), {
+    rightLabel: 'Preis',
+    rightValue: p => eurExact(p.prc),
+    rightSub: p => 'MW ' + eurShort(p.mv),
+    chip: p => (p.u && p.u.n) ? 'von ' + p.u.n : 'Kickbase',
+    trendLabel: 'Trend',
+    onRow: id => openPlayer(id)
+  });
 
   v.insertAdjacentHTML('beforeend', card('Käufer-Check', 'wer darf laut Regeln überhaupt noch kaufen?', '<div id="t-mkt-buyers"></div>'));
   sortTable($('#t-mkt-buyers', v), [
@@ -1696,9 +1782,13 @@ function vBuli(v) {
 /** Vereinsnamen und Bundesliga-Zugehörigkeit aus der Wettbewerbstabelle */
 function teamInfo() {
   const t = (S.compTable && S.compTable.it) || [];
-  const names = {}, ids = [];
-  t.forEach(r => { names[String(r.tid)] = r.tn; ids.push(String(r.tid)); });
-  return { names, ids };
+  const names = {}, ids = [], imgs = {};
+  t.forEach(r => {
+    names[String(r.tid)] = r.tn;
+    imgs[String(r.tid)] = r.tim;
+    ids.push(String(r.tid));
+  });
+  return { names, ids, imgs };
 }
 
 /** Befunde des Regelwächters als Kartenliste */
