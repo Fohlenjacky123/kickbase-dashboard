@@ -345,23 +345,37 @@ function sparkline(points, color, w, h) {
    Wiederverwendbare Bausteine
    ============================================================ */
 function statCard(label, value, sub) {
-  return '<div class="stat"><div class="lbl">' + esc(label) + '</div><div class="val">' + value + '</div>' +
-         (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  return '<div class="stat">' +
+         '<div class="stat-top"><div class="lbl">' + esc(label) + '</div><span class="stat-glow"></span></div>' +
+         '<div class="val">' + value + '</div>' +
+         (sub ? '<div class="sub">' + sub + '</div>' : '') +
+         '</div>';
 }
 function card(title, hint, bodyHtml, headExtra) {
-  return '<div class="card"><div class="card-head"><h2>' + esc(title) + '</h2>' +
+  return '<section class="card"><div class="card-head"><div class="card-head-main"><h2>' + esc(title) + '</h2>' +
          (hint ? '<span class="hint">' + esc(hint) + '</span>' : '') +
-         '<span class="spacer"></span>' + (headExtra || '') + '</div>' + bodyHtml + '</div>';
+         '</div><span class="spacer"></span>' + (headExtra || '') + '</div>' + bodyHtml + '</section>';
 }
 function playerCell(name, img, sub) {
-  return '<span class="player-cell"><img class="ava" src="' + esc(cdnImg(img)) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
-         '<span style="min-width:0"><span class="pname">' + esc(name) + '</span>' + (sub ? '<br><span class="psub">' + esc(sub) + '</span>' : '') + '</span></span>';
+  return '<span class="player-cell"><span class="ava-wrap"><img class="ava" src="' + esc(cdnImg(img)) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'"></span>' +
+         '<span class="player-meta"><span class="pname">' + esc(name) + '</span>' + (sub ? '<span class="psub">' + esc(sub) + '</span>' : '') + '</span></span>';
 }
 const posPill = p => '<span class="pill p' + p + '">' + (POS[p] || '?') + '</span>';
 function statusPill(st) {
   const [t, c] = statusOf(st);
   return '<span class="status-dot"><i style="background:' + c + '"></i>' + esc(t) + '</span>';
 }
+
+const TAB_META = {
+  home: { icon: '◈', title: 'Überblick', desc: 'Alles Wichtige deiner Liga auf einen Blick – sauber, schnell, fokussiert.' },
+  preseason: { icon: '◎', title: 'Vorsaison', desc: 'Form, Punkte, Transfermuster und historische Orientierung vor dem nächsten Move.' },
+  availability: { icon: '◌', title: 'Spielerverfügbarkeit', desc: 'Freie Spieler, Budgets und Verkaufsregeln in einer klaren Marktansicht.' },
+  table: { icon: '▣', title: 'Liga-Tabelle', desc: 'Punkte, Verläufe und Druck auf die Konkurrenz – kompakt und lesbar.' },
+  squad: { icon: '◆', title: 'Mein Kader', desc: 'Dein Team im Fokus – Werte, Status, Struktur und Baustellen auf einen Blick.' },
+  market: { icon: '⬢', title: 'Transfermarkt', desc: 'Wer ist drauf, wer kann kaufen, wer muss reagieren – ohne Tabellenchaos.' },
+  buli: { icon: '◍', title: 'Bundesliga', desc: 'Ligaweiter Spielerpool, Status, Marktwerte und Trends in modernem Raster.' },
+  liga: { icon: '✦', title: 'Regeln & Battles', desc: 'Regelwerk, Sanktionen, Battles und Ligalogik verständlich aufbereitet.' }
+};
 
 /** Sortierbare Tabelle */
 function sortTable(host, cols, rows, opts) {
@@ -410,7 +424,8 @@ let curTab = 'home';
 function renderTabs() {
   const t = $('#tabs'); t.innerHTML = '';
   TABS.forEach(([k, l]) => {
-    const b = el('button', 'tab' + (k === curTab ? ' on' : ''), esc(l));
+    const meta = TAB_META[k] || {};
+    const b = el('button', 'tab' + (k === curTab ? ' on' : ''), '<span class="tab-ic">' + esc(meta.icon || '•') + '</span><span>' + esc(l) + '</span>');
     b.onclick = () => { curTab = k; location.hash = k; renderTabs(); renderAll(); };
     t.appendChild(b);
   });
@@ -469,12 +484,32 @@ function repairAvailabilityView() {
   }
 }
 
+function decorateView(v) {
+  if (!v || v.querySelector(':scope > .view-hero')) return;
+  const meta = TAB_META[curTab] || { title: '', desc: '' };
+  const leagueName = (S.league && S.league.n) || (window.LIGA && window.LIGA.name) || 'Kickbase';
+  v.insertAdjacentHTML('afterbegin',
+    '<section class="view-hero">' +
+      '<div class="view-hero-copy">' +
+        '<span class="view-kicker">' + esc(meta.icon || '•') + ' ' + esc(leagueName) + '</span>' +
+        '<h1>' + esc(meta.title || '') + '</h1>' +
+        '<p>' + esc(meta.desc || '') + '</p>' +
+      '</div>' +
+      '<div class="view-hero-side">' +
+        '<div class="hero-chip"><span>Ansicht</span><b>' + esc(meta.title || '') + '</b></div>' +
+        '<div class="hero-chip"><span>Stand</span><b>' + esc(S.loadedAt ? new Date(S.loadedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'live') + '</b></div>' +
+      '</div>' +
+    '</section>');
+}
+
 function renderAll() {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + curTab));
   const fn = { home: vHome, preseason: vPreseason, availability: vAvailability, table: vTable, squad: vSquad, market: vMarket,
                buli: vBuli, liga: vLiga }[curTab];
-  if (fn) { try { fn($('#v-' + curTab)); } catch (e) { console.error(e); $('#v-' + curTab).innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
-  cleanVisibleText($('#v-' + curTab));
+  const view = $('#v-' + curTab);
+  if (fn) { try { fn(view); } catch (e) { console.error(e); view.innerHTML = '<div class="card"><div class="empty">Diese Ansicht konnte nicht gezeichnet werden.<br><small>' + esc(e.message) + '</small></div></div>'; } }
+  decorateView(view);
+  cleanVisibleText(view);
   repairAvailabilityView();
   cleanVisibleText($('#tabs'));
 }
