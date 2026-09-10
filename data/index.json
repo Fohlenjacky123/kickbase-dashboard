@@ -1,17 +1,17 @@
 {
- "updated": "2026-09-10T04:48:20.584Z",
+ "updated": "2026-09-10T11:25:00.018Z",
  "leagues": [
   {
    "leagueId": "1135150",
    "name": "X GUYS 1 CUP",
    "file": "archive-1135150.json",
-   "runs": 162,
-   "lastRun": "2026-09-10T04:48:20.584Z",
+   "runs": 163,
+   "lastRun": "2026-09-10T11:25:00.018Z",
    "firstRun": "2026-07-25T20:02:51.752Z",
    "managers": 11,
    "players": 502,
-   "marketSnapshots": 154,
-   "sizeKb": 970
+   "marketSnapshots": 155,
+   "sizeKb": 975
   }
  ]
 }
