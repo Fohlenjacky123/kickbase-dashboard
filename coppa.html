@@ -156,7 +156,9 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
   'use strict';
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
   var zahl = function (v) { return v == null ? '–' : Number(v).toLocaleString('de-DE'); };
-  var platzhalter = function (n) { return /^(Sieger|Verlierer) /.test(n); };
+  var platzhalter = function (n) { return /^(Sieger|Verlierer|Platz) /.test(n); };
+  // Vorläufige Namen im K.O.-Baum erst, wenn so viele Runden komplett gespielt sind
+  var KO_NAMEN_AB_RUNDE = 4;
 
   function render(D) {
     var meta = document.getElementById('meta');
@@ -214,7 +216,11 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
     h += '</section>';
 
     // ---------- K.O.-Phase ----------
-    var vorl = D.ligaphaseFertig ? '' : '<span class="badge vorl">vorläufig</span>';
+    var rundenFertig = Object.keys(nachRunde).filter(function (k) {
+      return nachRunde[k].filter(function (r) { return r.b !== 'spielfrei'; }).every(function (r) { return r.gespielt; });
+    }).length;
+    var zeigeNamen = D.ligaphaseFertig || rundenFertig >= KO_NAMEN_AB_RUNDE;
+    var vorl = (zeigeNamen && !D.ligaphaseFertig) ? '<span class="badge vorl">vorläufig</span>' : '';
     var koKarte = function (k, finale) {
       var zeile = function (seed, name, p, sieg) {
         var ph = platzhalter(name);
@@ -225,9 +231,19 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
       return '<div class="card ko' + (finale ? ' finale' : '') + '">' +
         zeile(k.platzA, k.a, k.pa, fertig && k.sieger === k.a) + zeile(k.platzB, k.b, k.pb, fertig && k.sieger === k.b) + '</div>';
     };
-    var ko = D.ko;
+    // Bis zur festgelegten Runde nur Startplätze statt Namen zeigen
+    var platzText = [['Platz 3', 'Platz 6'], ['Platz 4', 'Platz 5'], ['Platz 1', null], ['Platz 2', null], [null, null], [null, null]];
+    var ko = D.ko.map(function (k, i) {
+      if (zeigeNamen) return k;
+      var c = Object.assign({}, k);
+      if (platzText[i][0]) { c.a = platzText[i][0]; c.platzA = null; }
+      if (platzText[i][1]) { c.b = platzText[i][1]; c.platzB = null; }
+      return c;
+    });
     h += '<section id="ko"><h2>K.O.-Phase</h2><div class="sub">' +
-      (D.ligaphaseFertig ? 'Die Paarungen stehen fest.' : 'Vorläufig nach aktuellem Tabellenstand – fest erst nach Runde 11 (Spieltag 26).') + '</div>' +
+      (D.ligaphaseFertig ? 'Die Paarungen stehen fest.' :
+        (zeigeNamen ? 'Vorläufig nach aktuellem Tabellenstand – fest erst nach Runde 11 (Spieltag 26).' :
+          'Die Paarungen ergeben sich aus der Tabelle. Vorläufige Paarungen gibt es nach Runde ' + KO_NAMEN_AB_RUNDE + '.')) + '</div>' +
       '<div class="ko-stufe"><h3>Playoffs <span class="st">Spieltag 27 + 28</span>' + vorl + '</h3><div class="ko-grid zwei">' + koKarte(ko[0]) + koKarte(ko[1]) + '</div></div>' +
       '<div class="ko-stufe"><h3>Halbfinale <span class="st">Spieltag 30 + 31</span>' + vorl + '</h3><div class="ko-grid zwei">' + koKarte(ko[2]) + koKarte(ko[3]) + '</div></div>' +
       '<div class="ko-stufe"><h3>Finale <span class="st">Spieltag 33</span></h3><div class="ko-grid">' + koKarte(ko[4], true) + '</div></div>' +
