@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c0e">
+<title>Coppa Corona 2026/27 · xGuys1Cup</title>
+<meta name="description" content="Tabelle, Ergebnisse und K.O.-Phase der Coppa Corona 2026/27 der xGuys1Cup-Liga.">
+<meta property="og:title" content="Coppa Corona 2026/27">
+<meta property="og:description" content="Tabelle, Ergebnisse und K.O.-Phase des xGuys1Cup-Pokals">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:ital,wght@0,400;0,600;0,700;1,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* xGuys1Cup-Look wie im Dashboard: Nachtgrund mit Punktraster, Gladbach-Grün,
+   Archivo Black kursiv in Versalien, JetBrains Mono für Zahlen. */
+:root {
+  --page: #0c0c0e; --surface: #1a1c20; --surface-2: #131416; --surface-3: #22252b;
+  --ink: #f0f2f5; --ink-2: #a8adb8; --muted: #7a7f8a;
+  --border: #252830; --border-2: #333844;
+  --accent: #1f9d55; --accent-dim: #146239; --accent-soft: rgba(31,157,85,.14);
+  --gold: #ffd700; --gold-soft: rgba(255,215,0,.12);
+  --radius: 12px;
+  --font: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --black: 'Archivo Black', 'Archivo', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; font-family: var(--font); color: var(--ink); background-color: var(--page);
+  background-image: radial-gradient(rgba(255,255,255,.045) 1px, transparent 1px); background-size: 18px 18px;
+  font-size: 15px; line-height: 1.45;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
+h1, h2 { font-family: var(--black); font-style: italic; text-transform: uppercase; letter-spacing: .01em; margin: 0; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Kopf */
+header { padding: 26px 0 14px; }
+.kicker { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(30px, 9vw, 46px); line-height: .95; margin-top: 6px; }
+h1 .jahr { color: var(--gold); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface); font-size: 12.5px; color: var(--ink-2); }
+.chip b { color: var(--ink); font-weight: 700; }
+.chip.hl { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.progress { height: 6px; border-radius: 99px; background: var(--surface-3); margin-top: 14px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: 99px; }
+
+/* Navigation */
+nav { position: sticky; top: 0; z-index: 5; background: rgba(12,12,14,.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); margin: 0 -16px; padding: 0 16px; }
+nav .in { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav a { flex: none; padding: 11px 12px; color: var(--ink-2); text-decoration: none; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid transparent; }
+nav a:hover, nav a:focus-visible { color: var(--ink); border-bottom-color: var(--accent); outline: none; }
+
+section { margin-top: 28px; scroll-margin-top: 52px; }
+h2 { font-size: 22px; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+/* Tabelle */
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; text-align: right; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+th.l, td.l { text-align: left; }
+td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: right; font-size: 14px; }
+tr:last-child td { border-bottom: 0; }
+td.platz { width: 34px; text-align: center; font-family: var(--mono); font-weight: 700; color: var(--ink-2); border-left: 3px solid transparent; }
+td.name { font-weight: 700; }
+td.pkt { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--ink); }
+tr.z-hf td.platz { border-left-color: var(--gold); color: var(--gold); }
+tr.z-hf td { background: var(--gold-soft); }
+tr.z-po td.platz { border-left-color: var(--accent); color: var(--accent); }
+tr.z-po td { background: var(--accent-soft); }
+tr.z-out td { color: var(--ink-2); }
+tr.z-out td.name { color: var(--ink-2); }
+tr.trenn td { border-top: 1px dashed var(--border-2); }
+.hide-s { display: none; }
+@media (min-width: 560px) { .hide-s { display: table-cell; } }
+.legende { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+.legende span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legende .hf::before { background: var(--gold); }
+.legende .po::before { background: var(--accent); }
+.legende .out::before { background: var(--border-2); }
+
+/* Spielplan */
+.runde { margin-bottom: 10px; }
+.runde summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.runde summary::-webkit-details-marker { display: none; }
+.runde summary .t { font-family: var(--black); font-style: italic; text-transform: uppercase; font-size: 15px; }
+.runde summary .st { color: var(--muted); font-size: 13px; }
+.runde summary .pfeil { margin-left: auto; color: var(--muted); transition: transform .15s; }
+.runde[open] summary .pfeil { transform: rotate(90deg); }
+.badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 99px; background: var(--surface-3); color: var(--ink-2); }
+.badge.next { background: var(--accent); color: #fff; }
+.badge.done { background: var(--accent-soft); color: var(--accent); }
+.badge.vorl { background: var(--gold-soft); color: var(--gold); }
+.duell { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.duell .a { text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.duell .b { text-align: left; font-weight: 600; overflow-wrap: anywhere; }
+.duell .erg { font-family: var(--mono); font-weight: 700; font-size: 14px; min-width: 104px; text-align: center; padding: 4px 8px; border-radius: 8px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.duell .win { color: var(--accent); }
+.duell .lose { color: var(--muted); font-weight: 500; }
+.duell.played .erg { color: var(--ink); }
+.frei { padding: 9px 14px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); text-align: center; }
+.frei b { color: var(--ink-2); }
+
+/* K.O.-Phase */
+.ko-grid { display: grid; gap: 12px; }
+@media (min-width: 620px) { .ko-grid.zwei { grid-template-columns: 1fr 1fr; } }
+.ko-stufe { margin-bottom: 18px; }
+.ko-stufe h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-2); margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
+.ko-stufe h3 .st { color: var(--muted); font-weight: 500; letter-spacing: .02em; text-transform: none; }
+.ko .zeile { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
+.ko .zeile + .zeile { border-top: 1px solid var(--border); }
+.ko .seed { font-family: var(--mono); font-size: 12px; color: var(--muted); width: 22px; }
+.ko .n { font-weight: 700; flex: 1; }
+.ko .n.platzhalter { font-weight: 500; font-style: italic; color: var(--muted); }
+.ko .p { font-family: var(--mono); font-weight: 700; color: var(--ink-2); }
+.ko .zeile.win .n, .ko .zeile.win .p { color: var(--accent); }
+.ko .zeile.win .n::after { content: ' ✓'; }
+.ko.finale { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(255,215,0,.25), 0 8px 28px rgba(255,215,0,.08); }
+.ko.finale .zeile.win .n, .ko.finale .zeile.win .p { color: var(--gold); }
+
+/* Regeln */
+.regeln { padding: 6px 16px; }
+.regeln dl { margin: 0; }
+.regeln dt { font-weight: 700; margin-top: 12px; color: var(--accent); text-transform: uppercase; font-size: 12px; letter-spacing: .1em; }
+.regeln dd { margin: 4px 0 0; color: var(--ink-2); }
+.regeln dd:last-child { margin-bottom: 12px; }
+
+footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: center; }
+.fehler { margin-top: 30px; padding: 18px; border: 1px solid #ff4d4d; border-radius: var(--radius); color: var(--ink-2); }
+.skel { height: 120px; border-radius: var(--radius); background: linear-gradient(90deg, var(--surface) 0%, var(--surface-3) 50%, var(--surface) 100%); background-size: 200% 100%; animation: sk 1.2s infinite; margin-top: 24px; }
+@keyframes sk { to { background-position: -200% 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">xGuys1Cup · Pokal</div>
+    <h1>Coppa Corona <span class="jahr">2026/27</span></h1>
+    <div class="meta" id="meta"></div>
+    <div class="progress" aria-hidden="true"><i id="fortschritt" style="width:0"></i></div>
+  </header>
+  <nav><div class="in">
+    <a href="#tabelle">Tabelle</a><a href="#spielplan">Spielplan</a><a href="#ko">K.O.-Phase</a><a href="#regeln">Regeln</a>
+  </div></nav>
+  <main id="app"><div class="skel"></div><div class="skel"></div></main>
+  <footer id="fuss">Daten: Kickbase-Spieltagspunkte · gepflegt von den Regelhütern</footer>
+</div>
+<script>
+(function () {
+  'use strict';
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
+  var zahl = function (v) { return v == null ? '–' : Number(v).toLocaleString('de-DE'); };
+  var platzhalter = function (n) { return /^(Sieger|Verlierer) /.test(n); };
+
+  function render(D) {
+    var meta = document.getElementById('meta');
+    var naechste = D.naechsteRunde ? D.runden.filter(function (r) { return r.runde === D.naechsteRunde; })[0] : null;
+    meta.innerHTML =
+      (naechste ? '<span class="chip hl">Nächster Coppa-Spieltag: <b>Runde ' + naechste.runde + ' · Spieltag ' + naechste.st + '</b></span>' :
+        (D.ligaphaseFertig ? '<span class="chip hl"><b>Ligaphase beendet</b></span>' : '')) +
+      '<span class="chip"><b class="num">' + D.gespielteDuelle + '</b> von ' + D.duelleGesamt + ' Duellen gespielt</span>' +
+      '<span class="chip">Stand ' + esc(D.stand) + '</span>';
+    document.getElementById('fortschritt').style.width = Math.round(D.gespielteDuelle / D.duelleGesamt * 100) + '%';
+
+    var h = '';
+
+    // ---------- Tabelle ----------
+    h += '<section id="tabelle"><h2>Tabelle Ligaphase</h2>' +
+      '<div class="sub">' + (D.gespielteDuelle ? 'Stand nach ' + D.gespielteDuelle + ' Duellen' : 'Noch kein Duell gespielt – Reihenfolge nach Los-Nummer') + '</div>' +
+      '<div class="card"><table><thead><tr><th>#</th><th class="l">Manager</th><th>Sp</th><th class="hide-s">S</th><th class="hide-s">U</th><th class="hide-s">N</th><th>+/-</th><th>Pkt</th></tr></thead><tbody>';
+    D.tabelle.forEach(function (t) {
+      var zone = t.platz <= 2 ? 'z-hf' : (t.platz <= 6 ? 'z-po' : 'z-out');
+      var trenn = (t.platz === 3 || t.platz === 7) ? ' trenn' : '';
+      var diff = t.sp ? ((t.diff > 0 ? '+' : '') + zahl(t.diff)) : '–';
+      h += '<tr class="' + zone + trenn + '"><td class="platz">' + t.platz + '</td><td class="l name">' + esc(t.name) + '</td>' +
+        '<td class="num">' + t.sp + '</td><td class="num hide-s">' + t.s + '</td><td class="num hide-s">' + t.u + '</td><td class="num hide-s">' + t.n + '</td>' +
+        '<td class="num">' + diff + '</td><td class="pkt">' + t.pkt + '</td></tr>';
+    });
+    h += '</tbody></table></div>' +
+      '<div class="legende"><span class="hf">Platz 1–2: Halbfinale</span><span class="po">Platz 3–6: Playoffs</span><span class="out">Platz 7–11: raus</span></div>' +
+      '<div class="sub" style="margin-top:8px">Bei Punktgleichheit: 1. direkter Vergleich, 2. Kickbase-Punktedifferenz.</div></section>';
+
+    // ---------- Spielplan ----------
+    h += '<section id="spielplan"><h2>Spielplan &amp; Ergebnisse</h2><div class="sub">Ein Duell gewinnt, wer am Spieltag mehr Kickbase-Punkte holt.</div>';
+    var nachRunde = {};
+    D.runden.forEach(function (r) { (nachRunde[r.runde] = nachRunde[r.runde] || []).push(r); });
+    var letzteGespielt = 0;
+    Object.keys(nachRunde).forEach(function (k) { if (nachRunde[k].some(function (r) { return r.gespielt; })) letzteGespielt = Math.max(letzteGespielt, +k); });
+    Object.keys(nachRunde).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) {
+      var liste = nachRunde[k], st = liste[0].st;
+      var duelle = liste.filter(function (r) { return r.b !== 'spielfrei'; });
+      var frei = liste.filter(function (r) { return r.b === 'spielfrei'; })[0];
+      var fertig = duelle.every(function (r) { return r.gespielt; });
+      var badge = fertig ? '<span class="badge done">gespielt</span>' : (k === D.naechsteRunde ? '<span class="badge next">als Nächstes</span>' : '<span class="badge">offen</span>');
+      var offen = (k === D.naechsteRunde || k === letzteGespielt) ? ' open' : '';
+      h += '<details class="card runde"' + offen + '><summary><span class="t">Runde ' + k + '</span><span class="st">Spieltag ' + st + '</span>' + badge + '<span class="pfeil">›</span></summary>';
+      duelle.forEach(function (r) {
+        var ka = '', kb = '', erg = '– : –';
+        if (r.gespielt) {
+          erg = zahl(r.pa) + ' : ' + zahl(r.pb);
+          if (r.pa > r.pb) { ka = 'win'; kb = 'lose'; } else if (r.pb > r.pa) { ka = 'lose'; kb = 'win'; }
+        }
+        h += '<div class="duell' + (r.gespielt ? ' played' : '') + '"><span class="a ' + ka + '">' + esc(r.a) + '</span><span class="erg">' + erg + '</span><span class="b ' + kb + '">' + esc(r.b) + '</span></div>';
+      });
+      if (frei) h += '<div class="frei">spielfrei: <b>' + esc(frei.a) + '</b></div>';
+      h += '</details>';
+    });
+    h += '</section>';
+
+    // ---------- K.O.-Phase ----------
+    var vorl = D.ligaphaseFertig ? '' : '<span class="badge vorl">vorläufig</span>';
+    var koKarte = function (k, finale) {
+      var zeile = function (seed, name, p, sieg) {
+        var ph = platzhalter(name);
+        return '<div class="zeile' + (sieg ? ' win' : '') + '"><span class="seed">' + (seed ? seed + '.' : '') + '</span>' +
+          '<span class="n' + (ph ? ' platzhalter' : '') + '">' + esc(name) + '</span><span class="p">' + (p == null ? '' : zahl(p)) + '</span></div>';
+      };
+      var fertig = k.sieger && k.sieger !== 'offen';
+      return '<div class="card ko' + (finale ? ' finale' : '') + '">' +
+        zeile(k.platzA, k.a, k.pa, fertig && k.sieger === k.a) + zeile(k.platzB, k.b, k.pb, fertig && k.sieger === k.b) + '</div>';
+    };
+    var ko = D.ko;
+    h += '<section id="ko"><h2>K.O.-Phase</h2><div class="sub">' +
+      (D.ligaphaseFertig ? 'Die Paarungen stehen fest.' : 'Vorläufig nach aktuellem Tabellenstand – fest erst nach Runde 11 (Spieltag 26).') + '</div>' +
+      '<div class="ko-stufe"><h3>Playoffs <span class="st">Spieltag 27 + 28</span>' + vorl + '</h3><div class="ko-grid zwei">' + koKarte(ko[0]) + koKarte(ko[1]) + '</div></div>' +
+      '<div class="ko-stufe"><h3>Halbfinale <span class="st">Spieltag 30 + 31</span>' + vorl + '</h3><div class="ko-grid zwei">' + koKarte(ko[2]) + koKarte(ko[3]) + '</div></div>' +
+      '<div class="ko-stufe"><h3>Finale <span class="st">Spieltag 33</span></h3><div class="ko-grid">' + koKarte(ko[4], true) + '</div></div>' +
+      '<div class="ko-stufe"><h3>Spiel um Platz 3 <span class="st">Spieltag 33</span></h3><div class="ko-grid">' + koKarte(ko[5]) + '</div></div>' +
+      '<div class="sub">Punkte über zwei Spieltage werden addiert. Bei Gleichstand kommt weiter, wer in der Ligaphase besser platziert war.</div></section>';
+
+    // ---------- Regeln ----------
+    h += '<section id="regeln"><h2>Regeln</h2><div class="card regeln"><dl>' +
+      '<dt>Modus</dt><dd>11 Manager, jeder spielt einmal gegen jeden. 11 Runden, pro Runde ist ein Manager spielfrei – jeder genau einmal.</dd>' +
+      '<dt>Spieltage</dt><dd>Ligaphase alle zwei Bundesliga-Spieltage: 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26.</dd>' +
+      '<dt>Duell</dt><dd>Wer am Spieltag mehr Kickbase-Punkte holt, gewinnt. Sieg 3, Unentschieden 1, Niederlage 0. Strafen zählen ganz normal mit.</dd>' +
+      '<dt>Tabelle</dt><dd>1. Coppa-Punkte, 2. direkter Vergleich, 3. Kickbase-Punktedifferenz.</dd>' +
+      '<dt>K.O.-Phase</dt><dd>Platz 1–2 direkt ins Halbfinale. Playoffs (Spieltag 27 + 28): 3 gegen 6, 4 gegen 5. Halbfinale (30 + 31): 1 gegen Sieger 4/5, 2 gegen Sieger 3/6. Finale und Spiel um Platz 3 an Spieltag 33.</dd>' +
+      '<dt>Preise</dt><dd>1. Platz: 20 €, Goldmedaille und Coppa-Trophäe · 2. Platz: Silber · 3. Platz: Bronze.</dd>' +
+      (D.auslosung ? '<dt>Auslosung</dt><dd>' + esc(D.auslosung) + '</dd>' : '') +
+      '</dl></div></section>';
+
+    document.getElementById('app').innerHTML = h;
+  }
+
+  function fehler() {
+    document.getElementById('app').innerHTML = '<div class="fehler">Die Coppa-Daten konnten nicht geladen werden. Bitte Seite neu laden.</div>';
+  }
+
+  // Daten mit Zeitstempel laden, damit Handys nach einem Update nicht den alten Stand aus dem Cache zeigen
+  var s = document.createElement('script');
+  s.src = 'coppa-data.js?t=' + Date.now();
+  s.onload = function () { if (window.COPPA_DATA) { try { render(window.COPPA_DATA); } catch (e) { console.error(e); fehler(); } } else { fehler(); } };
+  s.onerror = fehler;
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
