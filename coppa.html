@@ -173,8 +173,18 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
     var h = '';
 
     // ---------- Tabelle ----------
+    // Letzte komplett gespielte Runde (ohne Freilos) für die Unterzeile
+    var rundeKomplett = function (k) {
+      var l = D.runden.filter(function (r) { return r.runde === k && r.b !== 'spielfrei'; });
+      return l.length > 0 && l.every(function (r) { return r.gespielt; });
+    };
+    var standRunde = 0;
+    for (var rk = 1; rk <= 11; rk++) { if (rundeKomplett(rk)) standRunde = rk; }
+    var standST = standRunde ? D.runden.filter(function (r) { return r.runde === standRunde; })[0].st : null;
+    var standText = standRunde ? 'Stand nach Runde ' + standRunde + ' · Spieltag ' + standST :
+      (D.gespielteDuelle ? 'Stand nach ' + D.gespielteDuelle + ' Duellen' : 'Noch kein Duell gespielt – Reihenfolge nach Los-Nummer');
     h += '<section id="tabelle"><h2>Tabelle Ligaphase</h2>' +
-      '<div class="sub">' + (D.gespielteDuelle ? 'Stand nach ' + D.gespielteDuelle + ' Duellen' : 'Noch kein Duell gespielt – Reihenfolge nach Los-Nummer') + '</div>' +
+      '<div class="sub">' + standText + '</div>' +
       '<div class="card"><table><thead><tr><th>#</th><th class="l">Manager</th><th>Sp</th><th class="hide-s">S</th><th class="hide-s">U</th><th class="hide-s">N</th><th>+/-</th><th>Pkt</th></tr></thead><tbody>';
     D.tabelle.forEach(function (t) {
       var zone = t.platz <= 2 ? 'z-hf' : (t.platz <= 6 ? 'z-po' : 'z-out');
