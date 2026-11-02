@@ -196,7 +196,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
     });
     h += '</tbody></table></div>' +
       '<div class="legende"><span class="hf">Platz 1–2: Halbfinale</span><span class="po">Platz 3–6: Playoffs</span><span class="out">Platz 7–11: raus</span></div>' +
-      '<div class="sub" style="margin-top:8px">Bei Punktgleichheit: 1. direkter Vergleich, 2. Kickbase-Punktedifferenz.</div></section>';
+      '<div class="sub" style="margin-top:8px">Bei Punktgleichheit: 1. direkter Vergleich (gilt erst, wenn alle Punktgleichen gegeneinander gespielt haben), 2. Kickbase-Punktedifferenz.</div></section>';
 
     // ---------- Spielplan ----------
     h += '<section id="spielplan"><h2>Spielplan &amp; Ergebnisse</h2><div class="sub">Ein Duell gewinnt, wer am Spieltag mehr Kickbase-Punkte holt.</div>';
@@ -265,7 +265,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; text-align: cen
       '<dt>Modus</dt><dd>11 Manager, jeder spielt einmal gegen jeden. 11 Runden, pro Runde ist ein Manager spielfrei – jeder genau einmal.</dd>' +
       '<dt>Spieltage</dt><dd>Ligaphase alle zwei Bundesliga-Spieltage: 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26.</dd>' +
       '<dt>Duell</dt><dd>Wer am Spieltag mehr Kickbase-Punkte holt, gewinnt. Sieg 3, Unentschieden 1, Niederlage 0. Strafen zählen ganz normal mit.</dd>' +
-      '<dt>Tabelle</dt><dd>1. Coppa-Punkte, 2. direkter Vergleich, 3. Kickbase-Punktedifferenz.</dd>' +
+      '<dt>Tabelle</dt><dd>1. Coppa-Punkte, 2. direkter Vergleich (gilt erst, wenn alle Punktgleichen gegeneinander gespielt haben), 3. Kickbase-Punktedifferenz.</dd>' +
       '<dt>K.O.-Phase</dt><dd>Platz 1–2 direkt ins Halbfinale. Playoffs (Spieltag 27 + 28): 3 gegen 6, 4 gegen 5. Halbfinale (30 + 31): 1 gegen Sieger 4/5, 2 gegen Sieger 3/6. Finale und Spiel um Platz 3 an Spieltag 33.</dd>' +
       '<dt>Preise</dt><dd>1. Platz: 20 €, Goldmedaille und Coppa-Trophäe · 2. Platz: Silber · 3. Platz: Bronze.</dd>' +
       (D.auslosung ? '<dt>Auslosung</dt><dd>' + esc(D.auslosung) + '</dd>' : '') +
